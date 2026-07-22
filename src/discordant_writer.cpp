@@ -1,5 +1,6 @@
 #include "discordant_writer.hpp"
 #include <stdexcept>
+#include <cstdio>
 
 DiscordantWriter::DiscordantWriter(const std::string& path, sam_hdr_t* hdr)
     : path_(path), hdr_(hdr) {
@@ -21,16 +22,22 @@ void DiscordantWriter::write(const bam1_t* rec) {
 
 void DiscordantWriter::close() {
     if (closed_) return;
-    sam_close(fp_);
+    int close_ret = sam_close(fp_);
     fp_ = nullptr;
+    closed_ = true;
+    if (close_ret < 0) {
+        throw std::runtime_error("failed to close discordant BAM: " + path_);
+    }
     if (sam_index_build(path_.c_str(), 0) < 0) {
         throw std::runtime_error("failed to index discordant BAM: " + path_);
     }
-    closed_ = true;
 }
 
 DiscordantWriter::~DiscordantWriter() {
     if (!closed_ && fp_) {
-        sam_close(fp_);
+        int close_ret = sam_close(fp_);
+        if (close_ret < 0) {
+            std::fprintf(stderr, "warning: failed to close discordant BAM on destruction: %s\n", path_.c_str());
+        }
     }
 }

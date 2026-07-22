@@ -43,7 +43,30 @@ void test_write_and_read_back() {
     sam_hdr_destroy(hdr);
 }
 
+void test_close_idempotent() {
+    sam_hdr_t* hdr = sam_hdr_init();
+    sam_hdr_add_line(hdr, "SQ", "SN", "chr1", "LN", "1000", NULL);
+
+    std::string path = "/tmp/test_discordant_writer_idempotent.bam";
+    DiscordantWriter writer(path, hdr);
+    bam1_t* rec = make_test_record("test_rec", BAM_FSUPPLEMENTARY, 0, 100, 60, -1, -1, 0, 50);
+    writer.write(rec);
+    bam_destroy1(rec);
+
+    // First close should succeed
+    writer.close();
+
+    // Second close should be a no-op (not throw, not crash)
+    writer.close();
+
+    ASSERT_TRUE(file_exists(path));
+    ASSERT_TRUE(file_exists(path + ".bai"));
+
+    sam_hdr_destroy(hdr);
+}
+
 int main() {
     test_write_and_read_back();
+    test_close_idempotent();
     TEST_REPORT();
 }
