@@ -34,11 +34,17 @@ $(BUILD_DIR)/bins.o: src/bins.cpp src/bins.hpp src/cli_args.hpp | $(BUILD_DIR)
 $(TEST_BUILD)/test_bins: tests/test_bins.cpp $(BUILD_DIR)/bins.o $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
-TESTS := $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins
+TESTS := $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index
 
 .PHONY: test
 test: $(TESTS)
 	@for t in $(TESTS); do echo "=== $$t ==="; $$t || exit 1; done
+
+$(BUILD_DIR)/barcode_index.o: src/barcode_index.cpp src/barcode_index.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(TEST_BUILD)/test_barcode_index: tests/test_barcode_index.cpp $(BUILD_DIR)/barcode_index.o | $(TEST_BUILD)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
 clean:
 	rm -rf $(BUILD_DIR) $(TEST_BUILD) $(BIN)
