@@ -83,6 +83,46 @@ void test_invalid_cbs_method_fails() {
     ASSERT_TRUE(!parse_cbs_args(argc, argv, args, help));
 }
 
+void test_flag_missing_value() {
+    auto [argc, argv] = make_argv({"dfn_cbs", "--counts", "in.txt.gz", "--bins", "bins.tsv",
+                                    "--out-prefix"});
+    CbsArgs args;
+    bool help = false;
+    ASSERT_TRUE(!parse_cbs_args(argc, argv, args, help));
+}
+
+void test_invalid_int_threads() {
+    auto [argc, argv] = make_argv({"dfn_cbs", "--counts", "in.txt.gz", "--bins", "bins.tsv",
+                                    "--out-prefix", "out", "--threads", "notanint"});
+    CbsArgs args;
+    bool help = false;
+    ASSERT_TRUE(!parse_cbs_args(argc, argv, args, help));
+}
+
+void test_invalid_int64_min_reads() {
+    auto [argc, argv] = make_argv({"dfn_cbs", "--counts", "in.txt.gz", "--bins", "bins.tsv",
+                                    "--out-prefix", "out", "--min-reads", "notanint64"});
+    CbsArgs args;
+    bool help = false;
+    ASSERT_TRUE(!parse_cbs_args(argc, argv, args, help));
+}
+
+void test_invalid_uint64_seed() {
+    auto [argc, argv] = make_argv({"dfn_cbs", "--counts", "in.txt.gz", "--bins", "bins.tsv",
+                                    "--out-prefix", "out", "--seed", "notuint64"});
+    CbsArgs args;
+    bool help = false;
+    ASSERT_TRUE(!parse_cbs_args(argc, argv, args, help));
+}
+
+void test_invalid_double_alpha() {
+    auto [argc, argv] = make_argv({"dfn_cbs", "--counts", "in.txt.gz", "--bins", "bins.tsv",
+                                    "--out-prefix", "out", "--alpha", "notadouble"});
+    CbsArgs args;
+    bool help = false;
+    ASSERT_TRUE(!parse_cbs_args(argc, argv, args, help));
+}
+
 int main() {
     test_defaults_with_required_only();
     test_overrides_all_flags();
@@ -90,5 +130,10 @@ int main() {
     test_missing_required_fails();
     test_unknown_flag_fails();
     test_invalid_cbs_method_fails();
+    test_flag_missing_value();
+    test_invalid_int_threads();
+    test_invalid_int64_min_reads();
+    test_invalid_uint64_seed();
+    test_invalid_double_alpha();
     TEST_REPORT();
 }
