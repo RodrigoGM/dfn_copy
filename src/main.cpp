@@ -158,7 +158,13 @@ int run(const Args& args) {
     std::vector<std::string> bin_names;
     for (size_t i = 0; i < bin_index.size(); ++i) bin_names.push_back(bin_index.name(i));
 
-    matrix.write_gz(args.out_prefix + ".raw_counts.txt.gz", bin_names, barcode_index.names());
+    try {
+        matrix.grow_to(barcode_index.size());
+        matrix.write_gz(args.out_prefix + ".raw_counts.txt.gz", bin_names, barcode_index.names());
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "error: %s\n", e.what());
+        return 1;
+    }
 
     return 0;
 }
