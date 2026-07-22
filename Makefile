@@ -5,10 +5,11 @@ LDLIBS := $(shell pkg-config --libs htslib) -lz
 BUILD_DIR := build
 TEST_BUILD := tests/build
 BIN := dfn_copy
+CBS_BIN := dfn_cbs
 
 .PHONY: all clean test
 
-all: $(BIN)
+all: $(BIN) $(CBS_BIN)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -27,6 +28,12 @@ $(BIN): $(BUILD_DIR)/main.o $(BUILD_DIR)/cli_args.o $(BUILD_DIR)/bins.o \
         $(BUILD_DIR)/read_filter.o $(BUILD_DIR)/fragment_pairing.o \
         $(BUILD_DIR)/discordant_writer.o
 	$(CXX) $^ -o $@ $(LDLIBS)
+
+$(BUILD_DIR)/cbs_main.o: src/cbs_main.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(CBS_BIN): $(BUILD_DIR)/cbs_main.o
+	$(CXX) $^ -o $@ -lz
 
 $(TEST_BUILD)/test_cli_args: tests/test_cli_args.cpp $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
@@ -74,4 +81,4 @@ $(TEST_BUILD)/test_discordant_writer: tests/test_discordant_writer.cpp $(BUILD_D
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
 clean:
-	rm -rf $(BUILD_DIR) $(TEST_BUILD) $(BIN)
+	rm -rf $(BUILD_DIR) $(TEST_BUILD) $(BIN) $(CBS_BIN)

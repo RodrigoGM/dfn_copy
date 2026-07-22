@@ -1,4 +1,5 @@
 #include "test_framework.hpp"
+#include "bam_test_helpers.hpp"
 #include "read_filter.hpp"
 
 void test_unconditional_drops() {

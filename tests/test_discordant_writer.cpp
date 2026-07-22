@@ -1,4 +1,5 @@
 #include "test_framework.hpp"
+#include "bam_test_helpers.hpp"
 #include "discordant_writer.hpp"
 #include <htslib/sam.h>
 #include <sys/stat.h>
