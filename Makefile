@@ -34,7 +34,7 @@ $(BUILD_DIR)/bins.o: src/bins.cpp src/bins.hpp src/cli_args.hpp | $(BUILD_DIR)
 $(TEST_BUILD)/test_bins: tests/test_bins.cpp $(BUILD_DIR)/bins.o $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
-TESTS := $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index $(TEST_BUILD)/test_counts_matrix $(TEST_BUILD)/test_read_filter
+TESTS := $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index $(TEST_BUILD)/test_counts_matrix $(TEST_BUILD)/test_read_filter $(TEST_BUILD)/test_fragment_pairing
 
 .PHONY: test
 test: $(TESTS)
@@ -56,6 +56,12 @@ $(BUILD_DIR)/read_filter.o: src/read_filter.cpp src/read_filter.hpp src/cli_args
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(TEST_BUILD)/test_read_filter: tests/test_read_filter.cpp $(BUILD_DIR)/read_filter.o $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+$(BUILD_DIR)/fragment_pairing.o: src/fragment_pairing.cpp src/fragment_pairing.hpp src/cli_args.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(TEST_BUILD)/test_fragment_pairing: tests/test_fragment_pairing.cpp $(BUILD_DIR)/fragment_pairing.o $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
 clean:
