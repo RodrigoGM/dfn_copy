@@ -2,6 +2,7 @@
 #include "raw_counts_loader.hpp"
 #include <zlib.h>
 #include <cstdio>
+#include <fstream>
 
 namespace {
 void write_gz(const std::string& path, const std::string& content) {
@@ -178,9 +179,55 @@ void test_bin_names_size_mismatch_throws() {
 
     bool threw = false;
     try {
-        load_raw_counts(path, 2, {"chr1:0:1000"}); // expected_num_bins=2 but only 1 name
+        load_raw_counts(path, 1, {}); // expected_num_bins=1 but empty expected_bin_names
     } catch (const std::runtime_error&) {
         threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
+void test_too_few_bin_rows_with_matching_bin_names_throws() {
+    const char* path = "/tmp/dfn_cbs_test_toofewrows_matching.txt.gz";
+    write_gz(path,
+        "bin\tAAAA-1\n"
+        "chr1:0:1000\t10\n");
+
+    bool threw = false;
+    try {
+        // Properly-sized expected_bin_names (3 names for 3 bins), but file has only 1 row
+        load_raw_counts(path, 3, {"chr1:0:1000", "chr1:1000:2000", "chr1:2000:3000"});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
+void test_corrupted_gzip_file_throws() {
+    const char* path = "/tmp/dfn_cbs_test_corrupted.txt.gz";
+
+    // Write a valid gzip file first
+    write_gz(path, "bin\tAAAA-1\nchr1:0:1000\t10\n");
+
+    // Now truncate it to make it corrupted by writing just the gzip magic bytes
+    std::ofstream truncate(path, std::ios::binary | std::ios::out | std::ios::trunc);
+    truncate.put(0x1F);
+    truncate.put(0x8B);
+    truncate.close();
+
+    bool threw = false;
+    try {
+        load_raw_counts(path, 1, {"chr1:0:1000"});
+    } catch (const std::runtime_error& e) {
+        std::string msg = e.what();
+        // Verify the error message is about corrupted file, not just "is empty"
+        if (msg.find("corrupted") != std::string::npos ||
+            msg.find("valid gzip") != std::string::npos) {
+            threw = true;
+        }
     }
     ASSERT_TRUE(threw);
 
@@ -199,5 +246,7 @@ int main() {
     test_non_integer_value_throws();
     test_out_of_range_count_throws();
     test_bin_names_size_mismatch_throws();
+    test_too_few_bin_rows_with_matching_bin_names_throws();
+    test_corrupted_gzip_file_throws();
     TEST_REPORT();
 }

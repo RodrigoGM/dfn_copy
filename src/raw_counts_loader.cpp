@@ -124,8 +124,13 @@ RawCountsMatrix load_raw_counts(const std::string& path,
                                       "from the same dfn_copy run (" + path + ")");
         }
         for (size_t c = 0; c < m.num_cells; ++c) {
-            m.data[bin_row * m.num_cells + c] =
-                parse_i32(fields[c + 1], "value at line " + std::to_string(line_no));
+            try {
+                m.data[bin_row * m.num_cells + c] =
+                    parse_i32(fields[c + 1], "value at line " + std::to_string(line_no));
+            } catch (const std::runtime_error&) {
+                gzclose(in);
+                throw;
+            }
         }
         ++bin_row;
     }
