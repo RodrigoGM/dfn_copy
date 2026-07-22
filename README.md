@@ -1,4 +1,6 @@
-# dfn_bin
+# dfn_copy
+
+![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
 
 Turns a coordinate-sorted, indexed DEFND-seq gDNA BAM into a bin×cell
 fragment-count matrix for single-cell copy-number analysis, plus a
@@ -14,12 +16,12 @@ C++17 compiler.
 make
 ```
 
-Produces `./dfn_bin`. Run `make test` to run the C++ unit test suite.
+Produces `./dfn_copy`. Run `make test` to run the C++ unit test suite.
 
 ## Usage
 
 ```bash
-./dfn_bin --bam sample.bam --bins bins.tsv --out-prefix sample
+./dfn_copy --bam sample.bam --bins bins.tsv --out-prefix sample
 python3 correct_gc.py --counts sample.raw_counts.txt.gz --bins bins.tsv --out-prefix sample
 ```
 
@@ -43,7 +45,7 @@ column order) `chrom`, `start`, `end`, `gc`.
   proper-pair flag unset), for manual/downstream structural-variant review.
   Excluded from both counts matrices.
 
-See `./dfn_bin --help` for the full flag list and defaults.
+See `./dfn_copy --help` for the full flag list and defaults.
 
 ## Validation
 

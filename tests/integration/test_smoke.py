@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "fixtures"))
 import gen_smoke_fixture
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
-DFN_BIN = os.path.join(REPO_ROOT, "dfn_bin")
+DFN_COPY = os.path.join(REPO_ROOT, "dfn_copy")
 
 def read_matrix(path):
     with gzip.open(path, "rt") as f:
@@ -20,7 +20,7 @@ def test_clean_reads_produce_expected_counts(tmp_path):
     out_prefix = str(tmp_path / "out")
 
     result = subprocess.run(
-        [DFN_BIN, "--bam", bam_path, "--bins", bins_path, "--out-prefix", out_prefix],
+        [DFN_COPY, "--bam", bam_path, "--bins", bins_path, "--out-prefix", out_prefix],
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
@@ -60,7 +60,7 @@ def test_last_discovered_barcode_with_no_binned_reads_does_not_crash(tmp_path):
     out_prefix = str(tmp_path / "out")
 
     result = subprocess.run(
-        [DFN_BIN, "--bam", bam_path, "--bins", bins_path, "--out-prefix", out_prefix],
+        [DFN_COPY, "--bam", bam_path, "--bins", bins_path, "--out-prefix", out_prefix],
         capture_output=True, text=True,
     )
 
@@ -107,7 +107,7 @@ def test_unwritable_out_prefix_dir_fails_cleanly(tmp_path):
     out_prefix = str(tmp_path / "nonexistent_dir" / "out")
 
     result = subprocess.run(
-        [DFN_BIN, "--bam", bam_path, "--bins", bins_path, "--out-prefix", out_prefix],
+        [DFN_COPY, "--bam", bam_path, "--bins", bins_path, "--out-prefix", out_prefix],
         capture_output=True, text=True,
     )
 

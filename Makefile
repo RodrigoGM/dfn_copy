@@ -4,7 +4,7 @@ LDLIBS := $(shell pkg-config --libs htslib) -lz
 
 BUILD_DIR := build
 TEST_BUILD := tests/build
-BIN := dfn_bin
+BIN := dfn_copy
 
 .PHONY: all clean test
 

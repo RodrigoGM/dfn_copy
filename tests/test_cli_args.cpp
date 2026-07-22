@@ -13,7 +13,7 @@ std::pair<int, char**> make_argv(std::vector<std::string> args) {
 }
 
 void test_defaults_with_required_only() {
-    auto [argc, argv] = make_argv({"dfn_bin", "--bam", "in.bam", "--bins", "bins.tsv",
+    auto [argc, argv] = make_argv({"dfn_copy", "--bam", "in.bam", "--bins", "bins.tsv",
                                     "--out-prefix", "out"});
     Args args;
     bool help = false;
@@ -35,7 +35,7 @@ void test_defaults_with_required_only() {
 
 void test_overrides_all_flags() {
     auto [argc, argv] = make_argv({
-        "dfn_bin", "--bam", "in.bam", "--bins", "bins.tsv", "--out-prefix", "out",
+        "dfn_copy", "--bam", "in.bam", "--bins", "bins.tsv", "--out-prefix", "out",
         "--barcode-tag", "CR", "--barcodes", "allow.txt", "--mapq", "20",
         "--exclude-dups", "false", "--primary-alignment-only", "false",
         "--single-end-counting", "r2", "--max-insert-size", "5000",
@@ -55,7 +55,7 @@ void test_overrides_all_flags() {
 }
 
 void test_help_flag() {
-    auto [argc, argv] = make_argv({"dfn_bin", "--help"});
+    auto [argc, argv] = make_argv({"dfn_copy", "--help"});
     Args args;
     bool help = false;
     ASSERT_TRUE(parse_args(argc, argv, args, help));
@@ -63,14 +63,14 @@ void test_help_flag() {
 }
 
 void test_missing_required_fails() {
-    auto [argc, argv] = make_argv({"dfn_bin", "--bins", "bins.tsv", "--out-prefix", "out"});
+    auto [argc, argv] = make_argv({"dfn_copy", "--bins", "bins.tsv", "--out-prefix", "out"});
     Args args;
     bool help = false;
     ASSERT_TRUE(!parse_args(argc, argv, args, help));
 }
 
 void test_unknown_flag_fails() {
-    auto [argc, argv] = make_argv({"dfn_bin", "--bam", "in.bam", "--bins", "bins.tsv",
+    auto [argc, argv] = make_argv({"dfn_copy", "--bam", "in.bam", "--bins", "bins.tsv",
                                     "--out-prefix", "out", "--nonsense", "1"});
     Args args;
     bool help = false;
@@ -78,7 +78,7 @@ void test_unknown_flag_fails() {
 }
 
 void test_invalid_enum_value_fails() {
-    auto [argc, argv] = make_argv({"dfn_bin", "--bam", "in.bam", "--bins", "bins.tsv",
+    auto [argc, argv] = make_argv({"dfn_copy", "--bam", "in.bam", "--bins", "bins.tsv",
                                     "--out-prefix", "out", "--position", "middle"});
     Args args;
     bool help = false;
@@ -86,7 +86,7 @@ void test_invalid_enum_value_fails() {
 }
 
 void test_barcode_tag_must_be_two_chars() {
-    auto [argc, argv] = make_argv({"dfn_bin", "--bam", "in.bam", "--bins", "bins.tsv",
+    auto [argc, argv] = make_argv({"dfn_copy", "--bam", "in.bam", "--bins", "bins.tsv",
                                     "--out-prefix", "out", "--barcode-tag", "TOOLONG"});
     Args args;
     bool help = false;

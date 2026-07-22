@@ -5,7 +5,7 @@
 
 std::string usage_text() {
     return
-        "dfn_bin --bam <path> --bins <path> --out-prefix <prefix> [options]\n"
+        "dfn_copy --bam <path> --bins <path> --out-prefix <prefix> [options]\n"
         "\n"
         "Required:\n"
         "  --bam <path>            Coordinate-sorted, indexed DEFND-seq gDNA BAM\n"

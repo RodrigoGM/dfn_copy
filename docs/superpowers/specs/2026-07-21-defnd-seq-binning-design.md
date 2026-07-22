@@ -2,6 +2,10 @@
 
 Date: 2026-07-21
 
+> Note (2026-07-22): the binary described here as `dfn_bin` was renamed to
+> `dfn_copy` after this spec was written. Left as-is below as a historical
+> record; see README.md and CHANGELOG.txt for the current name.
+
 ## Purpose
 
 Turn a coordinate-sorted, indexed DEFND-seq gDNA BAM into a bin × cell count

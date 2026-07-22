@@ -1,0 +1,37 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/),
+and this project adheres to Semantic Versioning (https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2026-07-22
+
+### Added
+- `dfn_copy`: a C++17 command-line tool that streams a coordinate-sorted,
+  indexed DEFND-seq gDNA BAM once and emits a bin x cell fragment-count
+  matrix, plus a discordant/split-read BAM for structural-variant review.
+  (Referred to as `dfn_bin` during early development; renamed to `dfn_copy`
+  for this release — see the design spec/plan docs under
+  docs/superpowers/ for the historical name.)
+- Full CLI flag set: --bam, --bins, --out-prefix, --barcode-tag,
+  --barcodes, --mapq, --exclude-dups, --primary-alignment-only,
+  --single-end-counting, --max-insert-size, --position, --threads, --help.
+- Fragment-pairing buffer (auto/r1/r2 modes) that collapses a mapped read
+  pair to one representative fragment per molecule, with explicit
+  singleton flushing so no read is silently dropped or double-counted.
+- Discordant-read detection (split/chimeric reads, cross-chromosome pairs,
+  same-chromosome improper pairs) diverted to a separate, automatically
+  indexed BAM instead of being folded into the counts matrix or dropped.
+- Chromosome-naming consistency check between the BAM header and the
+  bins file, raising a clear error on mismatch rather than silently
+  producing an all-zero matrix.
+- Dense, growable bins x barcodes counts matrix with gzip-compressed TSV
+  output (`<out-prefix>.raw_counts.txt.gz`).
+- `correct_gc.py`: companion Python script that GC-corrects the raw
+  counts matrix per cell via LOWESS (QDNAseq/Ginkgo-style), producing
+  `<out-prefix>.gc_corrected.txt.gz`.
+- C++ unit test suite (`tests/`) and pytest-based integration tests
+  (`tests/integration/`, `tests_py/`) covering fragment pairing,
+  discordant-read detection, error handling, and GC correction.
+- README.md, BSD-3-Clause LICENSE, .gitignore, and requirements.txt.

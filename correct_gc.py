@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GC-bias correction for dfn_bin's raw counts matrix.
+"""GC-bias correction for dfn_copy's raw counts matrix.
 
 Method: for each cell (column), fit a LOWESS curve of raw counts against
 each bin's GC fraction (statsmodels.nonparametric.lowess), then rescale
@@ -63,9 +63,9 @@ def correct_gc(matrix, gc):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="GC-correct a dfn_bin raw counts matrix")
+    parser = argparse.ArgumentParser(description="GC-correct a dfn_copy raw counts matrix")
     parser.add_argument("--counts", required=True, help="Path to <prefix>.raw_counts.txt.gz")
-    parser.add_argument("--bins", required=True, help="Path to the bins.tsv used by dfn_bin")
+    parser.add_argument("--bins", required=True, help="Path to the bins.tsv used by dfn_copy")
     parser.add_argument("--out-prefix", required=True, help="Prefix for the output file")
     args = parser.parse_args()
 

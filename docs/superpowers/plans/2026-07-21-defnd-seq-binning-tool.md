@@ -1,5 +1,9 @@
 # DEFND-seq Binning Tool Implementation Plan
 
+> Note (2026-07-22): the binary described here as `dfn_bin` was renamed to
+> `dfn_copy` after this plan was written. Left as-is below as a historical
+> record; see README.md and CHANGELOG.txt for the current name.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `dfn_bin`, a C++17/htslib command-line tool that streams a coordinate-sorted DEFND-seq gDNA BAM once and emits a raw bin×cell fragment-count matrix plus a discordant/split-read BAM, and `correct_gc.py`, a companion script that GC-corrects the raw matrix.
