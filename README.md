@@ -69,6 +69,8 @@ make test                                    # C++ unit tests
 .venv/bin/pytest tests_py -v                 # correct_gc.py tests
 ```
 
-The Python virtualenv (`.venv`) and its dependencies (`pysam`, `pytest`,
-`numpy`, `statsmodels`) are set up in the course of the implementation plan
-(`docs/superpowers/plans/2026-07-21-defnd-seq-binning-tool.md`, Tasks 9 and 11).
+On a fresh clone, set up the Python virtualenv with:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```

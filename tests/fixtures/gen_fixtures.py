@@ -28,7 +28,7 @@ SUPPLEMENTARY = 2048
 
 
 def _add(out, qname, flag, tid, pos, mapq, mtid, mpos, isize, cb=None,
-         seq_len=50, sa=None):
+         seq_len=50, sa=None, cb_int=None):
     a = pysam.AlignedSegment()
     a.query_name = qname
     a.query_sequence = "A" * seq_len
@@ -47,6 +47,10 @@ def _add(out, qname, flag, tid, pos, mapq, mtid, mpos, isize, cb=None,
     if sa is not None:
         tags.append(("SA", sa))
     a.tags = tags
+    if cb_int is not None:
+        # Present but non-string-typed CB tag (integer), to exercise the
+        # bam_aux2Z-returns-null-on-wrong-type path.
+        a.set_tag("CB", cb_int, value_type="i")
     out.write(a)
 
 
@@ -123,6 +127,11 @@ def build_main_bam(out_dir):
         _add(out, "split1", 0, 0, 9600, 60, -1, -1, 0, cb="AAAA-1",
              sa="chr2,601,+,50M,60,0;")
 
+        # --- bin chr1:10000-11000: barcode tag present but wrong type (int,
+        # not the Z/string type CB is documented to be) -- must not crash
+        # bam_aux2Z and must simply not be counted anywhere. ---
+        _add(out, "badtagtype1", 0, 0, 10100, 60, -1, -1, 0, cb_int=42)
+
         # --- off-bin: far past every defined bin ---
         _add(out, "offbin1", 0, 0, 350000, 60, -1, -1, 0, cb="AAAA-1")
 
@@ -152,6 +161,7 @@ def build_bins_file(out_dir):
         f.write("chr1\t7000\t8000\t0.45\n")
         f.write("chr1\t8000\t9000\t0.50\n")
         f.write("chr1\t9000\t10000\t0.55\n")
+        f.write("chr1\t10000\t11000\t0.50\n")
         f.write("chr2\t0\t1000\t0.45\n")
     return path
 

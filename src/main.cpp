@@ -124,7 +124,9 @@ int run(const Args& args) {
 
         uint8_t* bc_aux = bam_aux_get(rec, args.barcode_tag.c_str());
         if (!bc_aux) continue;
-        std::string barcode = bam_aux2Z(bc_aux);
+        char* bc_str = bam_aux2Z(bc_aux);
+        if (!bc_str) continue;
+        std::string barcode = bc_str;
 
         auto barcode_idx = barcode_index.get_or_create(barcode);
         if (!barcode_idx) continue;

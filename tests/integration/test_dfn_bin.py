@@ -176,6 +176,17 @@ def test_notallowed_barcode_counted_when_no_allowlist_given(fixtures, tmp_path):
     assert rows["chr1:9000:10000"]["ZZZZ-1"] == 1
 
 
+def test_non_string_barcode_tag_skipped_without_crash(fixtures, tmp_path):
+    # badtagtype1 carries an integer-typed CB tag (present but not type 'Z'),
+    # which makes bam_aux2Z return NULL. The tool must not crash on this and
+    # must simply skip the read rather than count it anywhere.
+    result, out_prefix = run_dfn_bin(fixtures, tmp_path)
+    assert result.returncode == 0, result.stderr
+    barcodes, rows = read_matrix(out_prefix + ".raw_counts.txt.gz")
+    assert rows["chr1:10000:11000"] == {bc: 0 for bc in barcodes}
+    assert "badtagtype1" not in discordant_qnames(out_prefix + ".discordant.bam")
+
+
 def test_exclude_dups_toggle(fixtures, tmp_path):
     result_on, prefix_on = run_dfn_bin(fixtures, tmp_path, out_name="on")
     result_off, prefix_off = run_dfn_bin(fixtures, tmp_path, extra_args=["--exclude-dups", "false"],
