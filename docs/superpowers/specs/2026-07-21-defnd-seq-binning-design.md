@@ -18,6 +18,19 @@ cell barcode lives in a BAM tag (`CB` by default — the corrected barcode,
 carrying a GEM-well suffix like `-1`), not in the read sequence. This is
 plain per-read binning over gDNA alignments — no ATAC fragment logic.
 
+## Related work: cna_utils
+
+Reviewed `rishvanth-kp/cna_utils` (`scripts/getBinCounts.py`) as a reference
+bin-counting implementation. It applies **no** MAPQ or SAM-flag filtering at
+all — it iterates every alignment record and only excludes reads landing in
+a "deadzone" BED, binning on `reference_start` (alignment start). It does
+not exclude secondary (`0x100`) or supplementary (`0x800`) alignments, so a
+multi-mapped or split-aligned read is counted once per alignment record
+rather than once per read. Our design deliberately filters those out (see
+CLI contract below) to avoid that double-counting; this is the concrete
+reason "primary alignment only" is spelled out as its own requirement rather
+than left implicit inside a generic "SAM flags" bullet.
+
 ## Scope / non-goals
 
 - No config files, no plugin system, no output formats beyond the two
@@ -55,24 +68,32 @@ accumulator; batched/parallel LOESS).
 
 ### CLI contract
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `--bam` | required | Coordinate-sorted, indexed DEFND-seq gDNA BAM |
-| `--bins` | required | Tab-separated bin file; header-driven columns `chrom`, `start`, `end`, `gc` |
-| `--out-prefix` | required | Prefix for `<prefix>.raw_counts.txt.gz` |
-| `--barcode-tag` | `CB` | BAM tag holding the cell barcode (e.g. `CR` for raw) |
-| `--barcodes` | none | Optional barcode allowlist file; reads with barcodes not listed are skipped |
-| `--mapq` | `30` | Minimum MAPQ to keep a read |
-| `--exclude-dups` | on | Exclude reads flagged as PCR/optical duplicates |
-| `--position` | `end` | Which read coordinate bins on: `start`, `midpoint`, or `end` |
-| `--threads` | `1` | Threads passed to htslib for BGZF decompression |
-| `--help` | — | Print usage |
+| Flag             | Default  | Meaning                                                                     |
+|------------------|----------|-----------------------------------------------------------------------------|
+| `--bam`          | required | Coordinate-sorted, indexed DEFND-seq gDNA BAM                               |
+| `--bins`         | required | Tab-separated bin file; header-driven columns `chrom`, `start`, `end`, `gc` |
+| `--out-prefix`   | required | Prefix for `<prefix>.raw_counts.txt.gz`                                     |
+| `--barcode-tag`  | `CB`     | BAM tag holding the cell barcode (e.g. `CR` for raw)                        |
+| `--barcodes`     | none     | Optional barcode allowlist file; reads with barcodes not listed are skipped |
+| `--mapq`         | `30`     | Minimum MAPQ to keep a read                                                 |
+| `--exclude-dups` | true     | Exclude reads flagged as PCR/optical duplicates                             |
+| `--position`     | `end`    | Which read coordinate bins on: `start`, `midpoint`, or `end`                |
+| `--threads`      | `1`      | Threads passed to htslib for BGZF decompression                             |
+| `--help`         | —        | Print usage                                                                 |
 
-Reads are always dropped if unmapped, secondary, supplementary, or QC-fail
-(SAM flags), regardless of other options; `--exclude-dups` additionally
-drops duplicate-flagged reads when on. Reads without a `--barcode-tag` tag,
-or excluded by `--barcodes`, are also dropped. Reads whose bin coordinate
-falls outside every provided bin are dropped.
+Reads are always dropped, regardless of other options, if any of these SAM
+FLAG bits are set: `0x4` (unmapped), `0x100` (not primary / secondary
+alignment), `0x200` (QC fail), `0x800` (supplementary alignment) — i.e. only
+the primary alignment record of a read is ever counted, never its secondary
+or supplementary records. `--exclude-dups` additionally drops `0x400`
+(duplicate) when on. Reads without a `--barcode-tag` tag, or excluded by
+`--barcodes`, are also dropped. Reads whose bin coordinate falls outside
+every provided bin are dropped.
+
+Implementation-wise this is one mask check against `bam1_t::core.flag`:
+`flag & (BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FSUPPLEMENTARY)`
+must be zero (plus `BAM_FDUP` when `--exclude-dups` is on), using htslib's
+existing flag constants rather than hand-rolled bit literals.
 
 ### Algorithm
 
@@ -87,11 +108,11 @@ falls outside every provided bin are dropped.
    Otherwise, columns are assigned in first-seen order as new barcodes
    appear during the streaming pass (a `unordered_map<string,size_t>` from
    barcode to column index, columns appended to a growable structure).
-4. Single streaming pass over the BAM (`bam_read1`). For each read:
-   filter by flags/MAPQ → extract barcode via `--barcode-tag` → check
-   allowlist (if any) → compute bin coordinate from `--position` → binary
-   search the chrom's bin vector → increment `counts[bin_idx][barcode_idx]`
-   (or drop if no containing bin).
+4. Single streaming pass over the BAM (`bam_read1`). For each read: filter
+   by FLAG mask (primary-alignment-only, per above) and MAPQ → extract
+   barcode via `--barcode-tag` → check allowlist (if any) → compute bin
+   coordinate from `--position` → binary search the chrom's bin vector →
+   increment `counts[bin_idx][barcode_idx]` (or drop if no containing bin).
 5. Write `<prefix>.raw_counts.txt.gz`: header row = `bin<TAB>barcode1<TAB>barcode2...`;
    each row = `<chr>:<start>:<end><TAB>count...`. Bin rows in bin-file order.
 
