@@ -28,7 +28,13 @@ $(BIN): $(BUILD_DIR)/main.o $(BUILD_DIR)/cli_args.o
 $(TEST_BUILD)/test_cli_args: tests/test_cli_args.cpp $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
-TESTS := $(TEST_BUILD)/test_cli_args
+$(BUILD_DIR)/bins.o: src/bins.cpp src/bins.hpp src/cli_args.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(TEST_BUILD)/test_bins: tests/test_bins.cpp $(BUILD_DIR)/bins.o $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+TESTS := $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins
 
 .PHONY: test
 test: $(TESTS)
