@@ -6,7 +6,10 @@ Date: 2026-07-21
 
 Turn a coordinate-sorted, indexed DEFND-seq gDNA BAM into a bin × cell count
 matrix suitable for single-cell copy-number analysis: one raw-counts matrix
-and one GC-bias-corrected matrix.
+and one GC-bias-corrected matrix. A third output collects reads that show
+structural-rearrangement evidence (split/chimeric reads, discordant pairs)
+for separate manual review rather than silently folding them into — or
+silently dropping them from — the depth-based counts.
 
 ## Background
 
@@ -75,10 +78,25 @@ were ever skipped. Our design filters those unconditionally (see below) so
 `dfn_bin` is correct standalone, without depending on an assumed upstream
 pipeline.
 
+## Related work: JaBbA
+
+Checked `mskilab-org/JaBbA` for a reference on how to write out SV-evidence
+reads (split reads, discordant pairs) to a BAM. It doesn't apply: JaBbA's
+own code (`R/`, `srcs/`, `inst/`) never touches BAM files at all — it starts
+from pre-called junctions (VCF/BEDPE/GRangesList) and coverage tracks
+(WIG/BigWig/BedGraph/BED), produced upstream by SV callers like SvABA. The
+two sibling mskilab packages that do read BAMs, `readsupport` and
+`bamUtils`, only *read* alignments into R (via `bamUtils::read.bam`) for
+analysis — neither contains code that *writes* a filtered/subset BAM.
+There's no borrowed convention here: writing `<out-prefix>.discordant.bam`
+(below) is plain htslib subsetting — open a second `htsFile` for writing
+with the same header, `sam_write1` matching records as they're encountered
+in the single streaming pass.
+
 ## Scope / non-goals
 
-- No config files, no plugin system, no output formats beyond the two
-  specified gzipped TSVs.
+- No config files, no plugin system, no output formats beyond the three
+  specified (two gzipped TSVs, one BAM of discordant/split-read evidence).
 - The tool assigns reads to bins the user supplies; it does not compute or
   merge bins itself.
 - Barcode handling only ever reads the configured BAM tag — never parsed out
@@ -86,6 +104,8 @@ pipeline.
 - No Tn5/ATAC-style fragment-interval logic (cut-site offsets, full-insert
   binning) — fragments are consolidated to one representative read (see
   `--single-end-counting`) and binned by that read's own coordinate.
+- Not an SV caller: discordant/split reads are collected for review, not
+  clustered, scored, or turned into junction calls.
 
 ## Architecture
 
@@ -125,6 +145,7 @@ accumulator; batched/parallel LOESS).
 | `--exclude-dups`           | true     | Exclude reads flagged as PCR/optical duplicates (`0x400`)                   |
 | `--primary-alignment-only` | true     | Exclude secondary (`0x100`) and supplementary (`0x800`) alignment records   |
 | `--single-end-counting`    | `auto`   | Fragment-counting mode for paired data: `auto`, `r1`, or `r2` (see below)   |
+| `--max-insert-size`        | `0`      | Optional absolute cutoff (bp) for same-chromosome discordance; `0` = rely solely on the aligner's proper-pair flag (see Discordant-read detection below) |
 | `--position`               | `end`    | Which read coordinate bins on: `start`, `midpoint`, or `end`                |
 | `--threads`                | `1`      | Threads passed to htslib for BGZF decompression                             |
 | `--help`                   | —        | Print usage                                                                 |
@@ -172,6 +193,49 @@ no pair to collapse.
   (matches cna_utils's `-f 0x40` behavior exactly, for users who want
   reproducibility against that convention).
 
+### Discordant-read detection → `<out-prefix>.discordant.bam`
+
+A read spanning a fusion/translocation breakpoint, or otherwise showing
+structural-rearrangement evidence, has each half mapping faithfully to a
+real genomic region — it shouldn't be silently binned as if it were normal
+depth signal, nor silently dropped and lost. Such reads are diverted to a
+third output, `<out-prefix>.discordant.bam`, for separate manual/tool-based
+review, and take no part in the counting matrices.
+
+This check runs immediately after the two unconditional drops (unmapped,
+QC-fail) and **before** MAPQ, `--primary-alignment-only`, `--exclude-dups`,
+and fragment-pairing — deliberately unfiltered by those, since the point of
+this file is to preserve everything potentially relevant for a human
+reviewer (who can always re-filter with `samtools view -q` etc. afterward),
+not to hand back an already-curated subset. A record is diverted if any of:
+
+1. **Split/chimeric read**: carries an `SA:Z:` tag (the aligner reports
+   another segment of this same read aligning elsewhere), or is itself a
+   supplementary alignment (`BAM_FSUPPLEMENTARY`, `0x800`) — both halves are
+   written, giving the full picture of the split alignment.
+2. **Cross-chromosome discordant pair**: mapped, paired, and its mate maps
+   to a different chromosome (`core.tid != core.mtid`). Both mates are
+   written as the coordinate-sorted stream reaches each one — this
+   supersedes the earlier "flush cross-chromosome mate as a counted
+   singleton" behavior; such pairs no longer reach the counting/pairing
+   path at all.
+3. **Same-chromosome discordant pair**: mapped, paired, same chromosome, but
+   not flagged "proper pair" by the aligner (`BAM_FPROPER_PAIR`, `0x2`,
+   unset) — bwa-mem and equivalent aligners already compute this from
+   observed orientation and insert-size expectations, so this reuses that
+   judgment rather than reimplementing insert-size statistics. If
+   `--max-insert-size` is set (non-zero), a pair additionally counts as
+   discordant whenever `|TLEN|` exceeds it, regardless of the proper-pair
+   flag — an override/backstop for cases where the aligner's own
+   proper-pair determination isn't trusted or a stricter cutoff is wanted.
+
+Records not matching any of the above proceed through the normal
+filter/counting/fragment-pairing pipeline described below. The discordant
+BAM is written with the input BAM's header, in the order records are
+encountered during the single streaming pass (so it stays coordinate-sorted
+by construction), and is indexed automatically (`sam_index_build`) once
+writing completes — no second pass required.
+
 ### Algorithm
 
 1. Parse bin file by header (order-independent columns `chrom`, `start`,
@@ -185,14 +249,18 @@ no pair to collapse.
    Otherwise, columns are assigned in first-seen order as new barcodes
    appear during the streaming pass (a `unordered_map<string,size_t>` from
    barcode to column index, columns appended to a growable structure).
-4. Single streaming pass over the BAM (`bam_read1`). For each read: filter
-   by FLAG mask (unmapped/QC-fail always; primary-alignment-only,
-   dup-exclusion per its toggle, per above) and MAPQ → extract barcode via
-   `--barcode-tag` → check allowlist (if any). If the read is unpaired
-   (`BAM_FPAIRED` unset), proceed straight to binning. If paired, resolve it
-   through the fragment-pairing buffer (below) per `--single-end-counting`
-   before binning — a read is only ever binned once its fragment
-   representative has been decided.
+4. Single streaming pass over the BAM (`bam_read1`). For each read: drop
+   unmapped/QC-fail unconditionally → check discordant-read criteria (SA
+   tag/supplementary, cross-chromosome mate, non-proper-pair/oversized
+   insert on the same chromosome); if matched, write to
+   `<out-prefix>.discordant.bam` and stop processing this record. Otherwise
+   continue: filter by MAPQ and the `--primary-alignment-only` /
+   `--exclude-dups` toggles → extract barcode via `--barcode-tag` → check
+   allowlist (if any). If the read is unpaired (`BAM_FPAIRED` unset),
+   proceed straight to binning. If paired, resolve it through the
+   fragment-pairing buffer (below) per `--single-end-counting` before
+   binning — a read is only ever binned once its fragment representative
+   has been decided.
 5. For a read cleared to be counted: compute bin coordinate from
    `--position` on that alignment's own coordinates → binary search the
    chrom's bin vector → increment `counts[bin_idx][barcode_idx]` (or drop
@@ -216,15 +284,17 @@ bin). Each mapped, paired, primary/filter-passing read is looked up by QNAME:
 - **Mate not pending** → store this read, keyed by QNAME, and continue.
 - **Flushing unresolved entries**: each stored read carries its own mate's
   expected coordinates (`RNEXT`/`PNEXT`, already in the BAM record). Once
-  the stream's current position passes that expected coordinate (same
-  chromosome) without the mate having appeared — it was filtered out
-  upstream (MAPQ, dup, off-allowlist, etc.) — the held read is flushed as a
-  singleton: counted in `auto` mode (a fragment shouldn't vanish just
-  because its partner didn't survive), dropped in `r1`/`r2` mode if it
-  isn't the required mate. Cross-chromosome mates (discordant pairs) are
-  rare post-MAPQ-filtering in practice and are flushed as singletons the
-  same way once their chromosome's records are exhausted. At end-of-file,
-  any remaining pending entries are flushed the same way.
+  the stream's current position passes that expected coordinate without the
+  mate having appeared — it was filtered out upstream (MAPQ, dup,
+  off-allowlist, etc.) — the held read is flushed as a singleton: counted
+  in `auto` mode (a fragment shouldn't vanish just because its partner
+  didn't survive), dropped in `r1`/`r2` mode if it isn't the required mate.
+  At end-of-file, any remaining pending entries are flushed the same way.
+  Note this buffer only ever holds *same-chromosome, proper-pair* reads —
+  cross-chromosome and improper-pair mates are already diverted to
+  `<out-prefix>.discordant.bam` before reaching this stage (see
+  Discordant-read detection above), so this buffer never needs to reason
+  about discordant pairs itself.
 
 Memory footprint is bounded by the number of *unresolved* fragments within
 one insert-size window at any point in the stream — small relative to the
@@ -269,6 +339,18 @@ coordinate-sorted BAM.
 - Output: `<prefix>.gc_corrected.txt.gz`, identical shape/labels to the raw
   matrix.
 
+## Outputs
+
+Three files, all produced by a single `dfn_bin` run (`correct_gc.py` adds
+the second of these three, downstream):
+
+1. `<prefix>.raw_counts.txt.gz` — bins × cells, raw integer fragment counts.
+2. `<prefix>.gc_corrected.txt.gz` — same shape, GC-bias-corrected (via
+   `correct_gc.py`).
+3. `<prefix>.discordant.bam` (+ `.bai`) — split/chimeric reads and
+   discordant pairs (cross-chromosome or same-chromosome improper-pair),
+   for manual/downstream SV review; excluded from both counts matrices.
+
 ## Error handling
 
 Fail fast with a specific, actionable message (not a stack trace or silent
@@ -292,12 +374,16 @@ using `pysam`/`samtools`. Unit/integration tests assert exact expected
 counts per (bin, barcode) cell, plus the error-handling paths (bad index,
 malformed bins file, chrom-naming mismatch). Fragment-pairing gets its own
 fixture cases: complete pairs with equal-length mates, complete pairs with
-unequal-length mates (assert `auto` keeps the longer one), pairs where only
-one mate survives other filters (assert it's still counted in `auto`, and
-correctly kept/dropped per `r1`/`r2`), and a discordant cross-chromosome
-pair (assert both ends are handled as singletons once flushed).
-`correct_gc.py` is tested against a small synthetic counts matrix with a
-known, injected GC trend, asserting the trend is flattened post-correction.
+unequal-length mates (assert `auto` keeps the longer one), and pairs where
+only one mate survives other filters (assert it's still counted in `auto`,
+and correctly kept/dropped per `r1`/`r2`). Discordant-read detection gets
+its own fixture cases, each asserted to land in `<prefix>.discordant.bam`
+and be absent from both counts matrices: a chimeric/split read (primary +
+supplementary, `SA` tag set), a cross-chromosome pair, and a same-chromosome
+pair with the proper-pair flag unset (plus one exercising `--max-insert-size`
+as the override path). `correct_gc.py` is tested against a small synthetic
+counts matrix with a known, injected GC trend, asserting the trend is
+flattened post-correction.
 
 ## Validation (manual sanity checks post-implementation)
 
@@ -305,3 +391,7 @@ known, injected GC trend, asserting the trend is flattened post-correction.
   passing-filter read count (most should land in a bin).
 - Plotting raw count vs. bin GC should show a visible trend; the same plot
   post-correction should be flat.
+- Reads diverted to `<prefix>.discordant.bam` should be a small minority of
+  total reads (a healthy DEFND-seq library isn't mostly rearranged); if it's
+  large, suspect a library/alignment QC issue rather than genuine
+  genome-wide rearrangement. Spot-check a handful of entries in IGV.
