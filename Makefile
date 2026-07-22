@@ -19,11 +19,20 @@ $(TEST_BUILD):
 $(BUILD_DIR)/main.o: src/main.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BIN): $(BUILD_DIR)/main.o
-	$(CXX) $(BUILD_DIR)/main.o -o $@ $(LDLIBS)
+$(BUILD_DIR)/cli_args.o: src/cli_args.cpp src/cli_args.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-test:
-	@echo "no tests yet"
+$(BIN): $(BUILD_DIR)/main.o $(BUILD_DIR)/cli_args.o
+	$(CXX) $(BUILD_DIR)/main.o $(BUILD_DIR)/cli_args.o -o $@ $(LDLIBS)
+
+$(TEST_BUILD)/test_cli_args: tests/test_cli_args.cpp $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+TESTS := $(TEST_BUILD)/test_cli_args
+
+.PHONY: test
+test: $(TESTS)
+	@for t in $(TESTS); do echo "=== $$t ==="; $$t || exit 1; done
 
 clean:
 	rm -rf $(BUILD_DIR) $(TEST_BUILD) $(BIN)
