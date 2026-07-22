@@ -22,8 +22,11 @@ $(BUILD_DIR)/main.o: src/main.cpp | $(BUILD_DIR)
 $(BUILD_DIR)/cli_args.o: src/cli_args.cpp src/cli_args.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BIN): $(BUILD_DIR)/main.o $(BUILD_DIR)/cli_args.o
-	$(CXX) $(BUILD_DIR)/main.o $(BUILD_DIR)/cli_args.o -o $@ $(LDLIBS)
+$(BIN): $(BUILD_DIR)/main.o $(BUILD_DIR)/cli_args.o $(BUILD_DIR)/bins.o \
+        $(BUILD_DIR)/barcode_index.o $(BUILD_DIR)/counts_matrix.o \
+        $(BUILD_DIR)/read_filter.o $(BUILD_DIR)/fragment_pairing.o \
+        $(BUILD_DIR)/discordant_writer.o
+	$(CXX) $^ -o $@ $(LDLIBS)
 
 $(TEST_BUILD)/test_cli_args: tests/test_cli_args.cpp $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
