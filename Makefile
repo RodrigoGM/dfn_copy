@@ -44,7 +44,13 @@ $(BUILD_DIR)/bin_gc.o: src/bin_gc.cpp src/bin_gc.hpp | $(BUILD_DIR)
 $(TEST_BUILD)/test_bin_gc: tests/test_bin_gc.cpp $(BUILD_DIR)/bin_gc.o | $(TEST_BUILD)
 	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isrc $^ -o $@
 
-$(CBS_BIN): $(BUILD_DIR)/cbs_main.o $(BUILD_DIR)/cbs_args.o $(BUILD_DIR)/bin_gc.o
+$(BUILD_DIR)/raw_counts_loader.o: src/raw_counts_loader.cpp src/raw_counts_loader.hpp | $(BUILD_DIR)
+	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isrc -c $< -o $@
+
+$(TEST_BUILD)/test_raw_counts_loader: tests/test_raw_counts_loader.cpp $(BUILD_DIR)/raw_counts_loader.o | $(TEST_BUILD)
+	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isrc $^ -o $@ -lz
+
+$(CBS_BIN): $(BUILD_DIR)/cbs_main.o $(BUILD_DIR)/cbs_args.o $(BUILD_DIR)/bin_gc.o $(BUILD_DIR)/raw_counts_loader.o
 	$(CXX) $^ -o $@ -lz
 
 $(TEST_BUILD)/test_cli_args: tests/test_cli_args.cpp $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
@@ -56,7 +62,7 @@ $(BUILD_DIR)/bins.o: src/bins.cpp src/bins.hpp src/cli_args.hpp | $(BUILD_DIR)
 $(TEST_BUILD)/test_bins: tests/test_bins.cpp $(BUILD_DIR)/bins.o $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
-TESTS := $(TEST_BUILD)/test_cbs_args $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index $(TEST_BUILD)/test_counts_matrix $(TEST_BUILD)/test_read_filter $(TEST_BUILD)/test_fragment_pairing $(TEST_BUILD)/test_discordant_writer $(TEST_BUILD)/test_bin_gc
+TESTS := $(TEST_BUILD)/test_cbs_args $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index $(TEST_BUILD)/test_counts_matrix $(TEST_BUILD)/test_read_filter $(TEST_BUILD)/test_fragment_pairing $(TEST_BUILD)/test_discordant_writer $(TEST_BUILD)/test_bin_gc $(TEST_BUILD)/test_raw_counts_loader
 
 .PHONY: test
 test: $(TESTS)
