@@ -30,7 +30,7 @@ $(BIN): $(BUILD_DIR)/main.o $(BUILD_DIR)/cli_args.o $(BUILD_DIR)/bins.o \
 	$(CXX) $^ -o $@ $(LDLIBS)
 
 $(BUILD_DIR)/cbs_main.o: src/cbs_main.cpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isrc -c $< -o $@
 
 $(CBS_BIN): $(BUILD_DIR)/cbs_main.o
 	$(CXX) $^ -o $@ -lz
