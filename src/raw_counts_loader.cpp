@@ -2,6 +2,7 @@
 #include <zlib.h>
 #include <sstream>
 #include <stdexcept>
+#include <limits>
 
 namespace {
 
@@ -37,7 +38,14 @@ int32_t parse_i32(const std::string& s, const std::string& context) {
         size_t consumed = 0;
         long v = std::stol(s, &consumed);
         if (consumed != s.size()) throw std::invalid_argument("trailing characters");
+        if (v < static_cast<long>(std::numeric_limits<int32_t>::min()) ||
+            v > static_cast<long>(std::numeric_limits<int32_t>::max())) {
+            throw std::runtime_error("raw counts file: value out of int32 range for " +
+                                      context + ": '" + s + "'");
+        }
         return static_cast<int32_t>(v);
+    } catch (const std::runtime_error&) {
+        throw;
     } catch (const std::exception&) {
         throw std::runtime_error("raw counts file: expected an integer for " +
                                   context + ", got '" + s + "'");
@@ -56,6 +64,14 @@ RawCountsMatrix load_raw_counts(const std::string& path,
 
     std::string header_line;
     if (!gz_getline(in, header_line)) {
+        int errnum = 0;
+        const char* err_msg = gzerror(in, &errnum);
+        if (errnum != Z_OK && errnum != Z_STREAM_END) {
+            std::string msg = "raw counts file is corrupted or not a valid gzip file: " +
+                               path + " (" + err_msg + ")";
+            gzclose(in);
+            throw std::runtime_error(msg);
+        }
         gzclose(in);
         throw std::runtime_error("raw counts file is empty: " + path);
     }
@@ -70,6 +86,14 @@ RawCountsMatrix load_raw_counts(const std::string& path,
     m.num_cells = header.size() - 1;
     m.barcodes.assign(header.begin() + 1, header.end());
     m.num_bins = expected_num_bins;
+
+    if (expected_bin_names.size() != expected_num_bins) {
+        gzclose(in);
+        throw std::runtime_error("raw counts loader: expected_bin_names size (" +
+            std::to_string(expected_bin_names.size()) + ") does not match expected_num_bins (" +
+            std::to_string(expected_num_bins) + ") -- this is a caller contract violation");
+    }
+
     m.data.assign(m.num_bins * m.num_cells, 0);
 
     std::string line;

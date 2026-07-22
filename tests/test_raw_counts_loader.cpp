@@ -61,9 +61,143 @@ void test_bin_name_mismatch_throws() {
     std::remove(path);
 }
 
+void test_nonexistent_file_throws() {
+    bool threw = false;
+    try {
+        load_raw_counts("/tmp/nonexistent_dfn_cbs_file_xyz.txt.gz", 1, {"chr1:0:1000"});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+}
+
+void test_genuinely_empty_file_throws() {
+    const char* path = "/tmp/dfn_cbs_test_empty.txt.gz";
+    write_gz(path, "");
+
+    bool threw = false;
+    try {
+        load_raw_counts(path, 0, {});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
+void test_invalid_header_throws() {
+    const char* path = "/tmp/dfn_cbs_test_badheader.txt.gz";
+    write_gz(path, "notbin\tAAAA-1\n");
+
+    bool threw = false;
+    try {
+        load_raw_counts(path, 0, {});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
+void test_too_many_bin_rows_throws() {
+    const char* path = "/tmp/dfn_cbs_test_toomanyrows.txt.gz";
+    write_gz(path,
+        "bin\tAAAA-1\n"
+        "chr1:0:1000\t10\n"
+        "chr1:1000:2000\t20\n");
+
+    bool threw = false;
+    try {
+        load_raw_counts(path, 1, {"chr1:0:1000"}); // expects 1, file has 2
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
+void test_wrong_field_count_throws() {
+    const char* path = "/tmp/dfn_cbs_test_wrongcols.txt.gz";
+    write_gz(path,
+        "bin\tAAAA-1\tCCCC-1\n"
+        "chr1:0:1000\t10\n");  // only 1 value, expects 2
+
+    bool threw = false;
+    try {
+        load_raw_counts(path, 1, {"chr1:0:1000"});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
+void test_non_integer_value_throws() {
+    const char* path = "/tmp/dfn_cbs_test_nonint.txt.gz";
+    write_gz(path,
+        "bin\tAAAA-1\n"
+        "chr1:0:1000\tnotanumber\n");
+
+    bool threw = false;
+    try {
+        load_raw_counts(path, 1, {"chr1:0:1000"});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
+void test_out_of_range_count_throws() {
+    const char* path = "/tmp/dfn_cbs_test_outofrange.txt.gz";
+    write_gz(path,
+        "bin\tAAAA-1\n"
+        "chr1:0:1000\t99999999999\n");  // outside int32 range
+
+    bool threw = false;
+    try {
+        load_raw_counts(path, 1, {"chr1:0:1000"});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
+void test_bin_names_size_mismatch_throws() {
+    const char* path = "/tmp/dfn_cbs_test_binnames_mismatch.txt.gz";
+    write_gz(path,
+        "bin\tAAAA-1\n"
+        "chr1:0:1000\t10\n");
+
+    bool threw = false;
+    try {
+        load_raw_counts(path, 2, {"chr1:0:1000"}); // expected_num_bins=2 but only 1 name
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+
+    std::remove(path);
+}
+
 int main() {
     test_loads_matrix_matching_bin_names();
     test_bin_count_mismatch_throws();
     test_bin_name_mismatch_throws();
+    test_nonexistent_file_throws();
+    test_genuinely_empty_file_throws();
+    test_invalid_header_throws();
+    test_too_many_bin_rows_throws();
+    test_wrong_field_count_throws();
+    test_non_integer_value_throws();
+    test_out_of_range_count_throws();
+    test_bin_names_size_mismatch_throws();
     TEST_REPORT();
 }
