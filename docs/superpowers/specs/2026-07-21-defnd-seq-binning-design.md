@@ -20,16 +20,44 @@ plain per-read binning over gDNA alignments — no ATAC fragment logic.
 
 ## Related work: cna_utils
 
-Reviewed `rishvanth-kp/cna_utils` (`scripts/getBinCounts.py`) as a reference
-bin-counting implementation. It applies **no** MAPQ or SAM-flag filtering at
-all — it iterates every alignment record and only excludes reads landing in
-a "deadzone" BED, binning on `reference_start` (alignment start). It does
-not exclude secondary (`0x100`) or supplementary (`0x800`) alignments, so a
-multi-mapped or split-aligned read is counted once per alignment record
-rather than once per read. Our design deliberately filters those out (see
-CLI contract below) to avoid that double-counting; this is the concrete
-reason "primary alignment only" is spelled out as its own requirement rather
-than left implicit inside a generic "SAM flags" bullet.
+Reviewed `rishvanth-kp/cna_utils` (`scripts/getBinCounts.py`, plus its
+`docs/cnv_pipeline_manual.pdf`) as a reference bin-counting implementation.
+
+`getBinCounts.py` itself applies **no** MAPQ or SAM-flag filtering — it
+iterates every alignment record and only excludes reads landing in a
+"deadzone" BED, binning on `reference_start` (alignment start). That's
+because the manual documents doing all filtering *upstream*, by hand, with
+plain `samtools` before `getBinCounts.py` ever runs:
+`samtools markdup -r` (dedup) → `samtools view -q 30 -F 0x800`
+(MAPQ + drop supplementary) → **`samtools view -f 0x40`** (keep only read 1
+of each pair, discard read 2 entirely — "Remove mates," done solely so a
+sequenced fragment isn't double-counted once per mate).
+
+Two things matter for us here:
+
+1. Their pipeline is a generic paired-end single-cell WGS protocol
+   (Baslan/Kendall-Krasnitz-style, not 10x/droplet-barcoded). Both mates are
+   ordinary genomic sequence, so "keep read 1, drop read 2" is an arbitrary
+   but harmless choice — either mate would do.
+2. **Our situation differs**: DEFND-seq's gDNA library is 10x-chemistry
+   based, and in 10x reads, read 1 conventionally carries the cell
+   barcode/UMI rather than genomic sequence, while read 2 carries the actual
+   insert. If the gDNA BAM was produced by aligning both mates directly
+   (e.g. `bwa mem` on the R1/R2 fastqs without a Cell-Ranger-style
+   barcode-extraction step first), read-1 alignment records are barcode
+   sequence that happened to map somewhere — noise, not signal — so the
+   mate worth keeping is the *opposite* of cna_utils's choice. This can't be
+   assumed to have been handled upstream the way cna_utils assumes, since a
+   DEFND-seq user is unlikely to have run an equivalent manual `samtools`
+   pipeline first, so the filtering is built into `dfn_bin` itself (see CLI
+   contract below) rather than documented as a prerequisite step.
+
+Also, since `getBinCounts.py` never excludes secondary (`0x100`) or
+supplementary (`0x800`) alignments itself, a multi-mapped or split-aligned
+read would be double-counted in their tool if the upstream `-F 0x800` step
+were ever skipped. Our design filters those unconditionally (see below) so
+`dfn_bin` is correct standalone, without depending on an assumed upstream
+pipeline.
 
 ## Scope / non-goals
 
@@ -68,32 +96,42 @@ accumulator; batched/parallel LOESS).
 
 ### CLI contract
 
-| Flag             | Default  | Meaning                                                                     |
-|------------------|----------|-----------------------------------------------------------------------------|
-| `--bam`          | required | Coordinate-sorted, indexed DEFND-seq gDNA BAM                               |
-| `--bins`         | required | Tab-separated bin file; header-driven columns `chrom`, `start`, `end`, `gc` |
-| `--out-prefix`   | required | Prefix for `<prefix>.raw_counts.txt.gz`                                     |
-| `--barcode-tag`  | `CB`     | BAM tag holding the cell barcode (e.g. `CR` for raw)                        |
-| `--barcodes`     | none     | Optional barcode allowlist file; reads with barcodes not listed are skipped |
-| `--mapq`         | `30`     | Minimum MAPQ to keep a read                                                 |
-| `--exclude-dups` | true     | Exclude reads flagged as PCR/optical duplicates                             |
-| `--position`     | `end`    | Which read coordinate bins on: `start`, `midpoint`, or `end`                |
-| `--threads`      | `1`      | Threads passed to htslib for BGZF decompression                             |
-| `--help`         | —        | Print usage                                                                 |
+| Flag                       | Default  | Meaning                                                                     |
+|----------------------------|----------|-----------------------------------------------------------------------------|
+| `--bam`                    | required | Coordinate-sorted, indexed DEFND-seq gDNA BAM                               |
+| `--bins`                   | required | Tab-separated bin file; header-driven columns `chrom`, `start`, `end`, `gc` |
+| `--out-prefix`             | required | Prefix for `<prefix>.raw_counts.txt.gz`                                     |
+| `--barcode-tag`            | `CB`     | BAM tag holding the cell barcode (e.g. `CR` for raw)                        |
+| `--barcodes`               | none     | Optional barcode allowlist file; reads with barcodes not listed are skipped |
+| `--mapq`                   | `30`     | Minimum MAPQ to keep a read                                                 |
+| `--exclude-dups`           | true     | Exclude reads flagged as PCR/optical duplicates (`0x400`)                   |
+| `--primary-alignment-only` | true     | Exclude secondary (`0x100`) and supplementary (`0x800`) alignment records   |
+| `--second-mate-only`       | true     | For paired reads, keep only read 2 (`0x80`); drop read 1 (`0x40`). 10x reads carry the cell barcode/UMI on read 1, not genomic sequence — no-op on unpaired/single-end alignments |
+| `--position`               | `end`    | Which read coordinate bins on: `start`, `midpoint`, or `end`                |
+| `--threads`                | `1`      | Threads passed to htslib for BGZF decompression                             |
+| `--help`                   | —        | Print usage                                                                 |
 
-Reads are always dropped, regardless of other options, if any of these SAM
-FLAG bits are set: `0x4` (unmapped), `0x100` (not primary / secondary
-alignment), `0x200` (QC fail), `0x800` (supplementary alignment) — i.e. only
-the primary alignment record of a read is ever counted, never its secondary
-or supplementary records. `--exclude-dups` additionally drops `0x400`
-(duplicate) when on. Reads without a `--barcode-tag` tag, or excluded by
-`--barcodes`, are also dropped. Reads whose bin coordinate falls outside
-every provided bin are dropped.
+Reads are always dropped, regardless of other options, if unmapped (`0x4`)
+or QC-fail (`0x200`) — these two are not configurable. On top of that, by
+default (`--primary-alignment-only true`) only the primary alignment record
+of a read is ever counted, never its secondary/supplementary records;
+(`--second-mate-only true`) drops read-1 records of a mapped pair, since in
+10x chemistry read 1 conventionally carries the barcode/UMI rather than
+genomic sequence (see cna_utils comparison above — this is the reverse of
+their "keep read 1" convention, deliberately, because the two pipelines'
+read 1/2 semantics differ); and `--exclude-dups true` drops duplicate-flagged
+(`0x400`) reads. All three are exposed as toggles (not hardcoded) so they
+can be turned off if inspection of a real BAM shows a different read
+structure than assumed here — this assumption should be verified against an
+actual DEFND-seq gDNA BAM header/records before relying on the defaults.
+Reads without a `--barcode-tag` tag, or excluded by `--barcodes`, are also
+dropped. Reads whose bin coordinate falls outside every provided bin are
+dropped.
 
-Implementation-wise this is one mask check against `bam1_t::core.flag`:
-`flag & (BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FSUPPLEMENTARY)`
-must be zero (plus `BAM_FDUP` when `--exclude-dups` is on), using htslib's
-existing flag constants rather than hand-rolled bit literals.
+Implementation-wise this is mask checks against `bam1_t::core.flag` using
+htslib's existing flag constants (`BAM_FUNMAP`, `BAM_FSECONDARY`,
+`BAM_FQCFAIL`, `BAM_FSUPPLEMENTARY`, `BAM_FDUP`, `BAM_FPAIRED`,
+`BAM_FREAD1`) rather than hand-rolled bit literals.
 
 ### Algorithm
 
@@ -109,9 +147,10 @@ existing flag constants rather than hand-rolled bit literals.
    appear during the streaming pass (a `unordered_map<string,size_t>` from
    barcode to column index, columns appended to a growable structure).
 4. Single streaming pass over the BAM (`bam_read1`). For each read: filter
-   by FLAG mask (primary-alignment-only, per above) and MAPQ → extract
-   barcode via `--barcode-tag` → check allowlist (if any) → compute bin
-   coordinate from `--position` → binary search the chrom's bin vector →
+   by FLAG mask (unmapped/QC-fail always; primary-alignment-only,
+   second-mate-only, dup-exclusion per their toggles, per above) and MAPQ →
+   extract barcode via `--barcode-tag` → check allowlist (if any) → compute
+   bin coordinate from `--position` → binary search the chrom's bin vector →
    increment `counts[bin_idx][barcode_idx]` (or drop if no containing bin).
 5. Write `<prefix>.raw_counts.txt.gz`: header row = `bin<TAB>barcode1<TAB>barcode2...`;
    each row = `<chr>:<start>:<end><TAB>count...`. Bin rows in bin-file order.
@@ -169,10 +208,10 @@ No other dependencies. `correct_gc.py` requires `numpy`, `statsmodels`
 
 TDD. A fixture script builds a small synthetic BAM (few contigs, ~100–200
 reads, a handful of barcodes, including reads that should be dropped by each
-filter — low MAPQ, secondary/supplementary/dup flags, missing CB tag,
-off-allowlist barcode, outside all bins) plus a matching small `bins.tsv`,
-using `pysam`/`samtools`. Unit/integration tests assert exact expected
-counts per (bin, barcode) cell, plus the error-handling paths (bad index,
+filter — low MAPQ, secondary/supplementary/dup flags, read-1-of-pair,
+missing CB tag, off-allowlist barcode, outside all bins) plus a matching
+small `bins.tsv`, using `pysam`/`samtools`. Unit/integration tests assert
+exact expected counts per (bin, barcode) cell, plus the error-handling paths (bad index,
 malformed bins file, chrom-naming mismatch). `correct_gc.py` is tested
 against a small synthetic counts matrix with a known, injected GC trend,
 asserting the trend is flattened post-correction.
