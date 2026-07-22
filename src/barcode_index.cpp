@@ -13,6 +13,7 @@ BarcodeIndex BarcodeIndex::load_allowlist(const std::string& path) {
     std::string line;
     while (std::getline(in, line)) {
         if (line.empty()) continue;
+        if (idx.index_.find(line) != idx.index_.end()) continue;
         idx.index_[line] = idx.names_.size();
         idx.names_.push_back(line);
     }

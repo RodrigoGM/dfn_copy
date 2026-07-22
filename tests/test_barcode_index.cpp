@@ -66,10 +66,28 @@ void test_unreadable_allowlist_throws() {
     ASSERT_TRUE(threw);
 }
 
+void test_allowlist_duplicate_entries_collapse_to_one_column() {
+    std::string path = write_temp_file("allow_dup.txt", "AAAA-1\nAAAA-1\nCCCC-1\n");
+    BarcodeIndex idx = BarcodeIndex::load_allowlist(path);
+
+    // Should have 2 columns, not 3
+    ASSERT_EQ(idx.size(), static_cast<size_t>(2));
+
+    // Names should be only unique barcodes
+    ASSERT_EQ(idx.names()[0], std::string("AAAA-1"));
+    ASSERT_EQ(idx.names()[1], std::string("CCCC-1"));
+
+    // get_or_create should return column 0 for AAAA-1
+    auto a = idx.get_or_create("AAAA-1");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_EQ(*a, static_cast<size_t>(0));
+}
+
 int main() {
     test_first_seen_order();
     test_allowlist_order_and_rejection();
     test_empty_allowlist_throws();
     test_unreadable_allowlist_throws();
+    test_allowlist_duplicate_entries_collapse_to_one_column();
     TEST_REPORT();
 }
