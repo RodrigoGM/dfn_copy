@@ -34,7 +34,7 @@ $(BUILD_DIR)/bins.o: src/bins.cpp src/bins.hpp src/cli_args.hpp | $(BUILD_DIR)
 $(TEST_BUILD)/test_bins: tests/test_bins.cpp $(BUILD_DIR)/bins.o $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
-TESTS := $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index $(TEST_BUILD)/test_counts_matrix $(TEST_BUILD)/test_read_filter $(TEST_BUILD)/test_fragment_pairing
+TESTS := $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index $(TEST_BUILD)/test_counts_matrix $(TEST_BUILD)/test_read_filter $(TEST_BUILD)/test_fragment_pairing $(TEST_BUILD)/test_discordant_writer
 
 .PHONY: test
 test: $(TESTS)
@@ -62,6 +62,12 @@ $(BUILD_DIR)/fragment_pairing.o: src/fragment_pairing.cpp src/fragment_pairing.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(TEST_BUILD)/test_fragment_pairing: tests/test_fragment_pairing.cpp $(BUILD_DIR)/fragment_pairing.o $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+$(BUILD_DIR)/discordant_writer.o: src/discordant_writer.cpp src/discordant_writer.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(TEST_BUILD)/test_discordant_writer: tests/test_discordant_writer.cpp $(BUILD_DIR)/discordant_writer.o | $(TEST_BUILD)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
 
 clean:
