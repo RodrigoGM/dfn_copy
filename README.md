@@ -23,6 +23,11 @@ Produces `./dfn_bin`. Run `make test` to run the C++ unit test suite.
 python3 correct_gc.py --counts sample.raw_counts.txt.gz --bins bins.tsv --out-prefix sample
 ```
 
+**Note:** `correct_gc.py` requires `numpy` and `statsmodels`. Install them with:
+```bash
+pip install numpy statsmodels
+```
+
 `bins.tsv` is a tab-separated file with a header row containing (in any
 column order) `chrom`, `start`, `end`, `gc`.
 
