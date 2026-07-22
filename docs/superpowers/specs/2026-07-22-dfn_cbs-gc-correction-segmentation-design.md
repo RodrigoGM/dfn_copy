@@ -162,6 +162,48 @@ the three output matrices there are, and does not grow if cell count grows
 further (only the *scratch file sizes* grow; they're never held alongside
 each other).
 
+## Progress reporting
+
+At 475k cells with per-cell CBS permutation testing, a silent multi-hour
+run is indistinguishable from a hung one. `dfn_cbs` reports progress to
+**stderr** (stdout is unused — there is no piped-output use case here) for
+all three phases:
+
+- **Phase 1**: a single line when loading starts and another when it
+  finishes, with elapsed time (`Loading raw counts matrix (~13GB)...` /
+  `done in 42.1s`) — this phase is one-shot, there's nothing to bar.
+- **Phase 2** (the long pole): a periodic status line, updated on a fixed
+  ~5-second cadence from a dedicated reporter thread reading an atomic
+  "cells completed" counter that each worker increments as it finishes a
+  cell — no locking on the hot path, workers never wait on the reporter.
+  Format:
+
+  ```
+  [dfn_cbs] Phase 2: 128,431 / 460,213 cells (27.9%) | elapsed 00:12:34 | ETA 00:32:10 | 173.4 cells/s
+  ```
+
+  Throughput and ETA use the cumulative average (`completed / elapsed`,
+  `remaining / rate`) rather than a smoothed/windowed rate — simpler, and
+  accurate enough over the cell counts this tool targets, since per-cell
+  runtime variance (driven by how many CBS splits a given cell's profile
+  triggers) averages out quickly at this scale.
+- **Phase 3**: one line per output matrix (`Writing gc_corrected.txt.gz
+  (bins x cells transpose)...` / `done in 18.3s`), same one-shot style as
+  Phase 1.
+
+**TTY vs. non-TTY**: when stderr is a terminal (`isatty`), the Phase 2
+status line rewrites in place (`\r`, no trailing newline) so it reads as a
+live-updating bar. When stderr is redirected (a log file, `nohup`, etc.),
+each update is a plain newline-terminated line instead — an in-place
+`\r`-rewritten line would otherwise turn into thousands of separate lines
+in a redirected log, one per update.
+
+A `--quiet` flag suppresses all progress output (phase start/done lines and
+the periodic status line) for scripted/batch runs that don't want it; it
+does not suppress error messages. The ~5-second update cadence is fixed,
+not configurable — kept out of the CLI surface deliberately, matching this
+tool's otherwise minimal flag set.
+
 ## LOWESS implementation
 
 Reimplemented in C++ to match `statsmodels.nonparametric.smoothers_lowess.
@@ -188,6 +230,7 @@ not resampled onto a grid.
 | `--max-depth`     | `100`    | CBS maximum recursive split depth                                      |
 | `--cbs-method`    | `1cp`    | CBS split search: `1cp` (single changepoint) or `2cp` (two-changepoint scan) |
 | `--seed`          | `1`      | RNG seed; per-cell RNG is seeded `seed XOR hash(barcode)` for reproducibility, mirroring `cbs+`'s own per-chromosome seeding convention |
+| `--quiet`         | off      | Suppress phase/progress messages on stderr (errors are never suppressed) |
 | `--help`          | —        | Print usage                                                             |
 
 `--center` is intentionally not exposed (see Related work: cbs+ above).
