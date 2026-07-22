@@ -8,6 +8,7 @@
 
 #include <htslib/sam.h>
 #include <cstdio>
+#include <memory>
 #include <vector>
 #include <string>
 
@@ -80,7 +81,13 @@ int run(const Args& args) {
 
     // --- Set up outputs ---
     std::string discordant_path = args.out_prefix + ".discordant.bam";
-    DiscordantWriter discordant_writer(discordant_path, hdr);
+    std::unique_ptr<DiscordantWriter> discordant_writer;
+    try {
+        discordant_writer = std::make_unique<DiscordantWriter>(discordant_path, hdr);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "error: %s\n", e.what());
+        return 1;
+    }
 
     CountsMatrix matrix(bin_index.size(), barcode_index.size());
 
@@ -97,7 +104,12 @@ int run(const Args& args) {
 
         DiscordantReason reason = classify_discordant(rec, args);
         if (reason != DiscordantReason::None) {
-            discordant_writer.write(rec);
+            try {
+                discordant_writer->write(rec);
+            } catch (const std::exception& e) {
+                std::fprintf(stderr, "error: failed writing to discordant BAM: %s\n", e.what());
+                return 1;
+            }
             for (const auto& flushed : pairing_buffer.flush_up_to(rec->core.tid, rec->core.pos)) {
                 bin_candidate(flushed, bin_index, tid_to_chrom, args, matrix);
             }
@@ -150,7 +162,12 @@ int run(const Args& args) {
     }
 
     bam_destroy1(rec);
-    discordant_writer.close();
+    try {
+        discordant_writer->close();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "error: failed closing discordant BAM: %s\n", e.what());
+        return 1;
+    }
     sam_hdr_destroy(hdr);
     sam_close(bam_fp);
 
