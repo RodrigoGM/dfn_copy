@@ -1,0 +1,10 @@
+.venv/
+build/
+tests/build/
+*.o
+dfn_bin
+__pycache__/
+*.pyc
+tests/fixtures/*.bam
+tests/fixtures/*.bai
+tests/fixtures/*.bam.bai
