@@ -23,6 +23,7 @@ public:
     void close();
 
 private:
+    std::string path_;
     std::ofstream out_;
     std::mutex mutex_;
 };

@@ -1,6 +1,7 @@
 #include "gc_correct.hpp"
 #include "lowess.hpp"
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 
@@ -33,7 +34,7 @@ GcCorrectedCell gc_correct_cell(const std::vector<double>& counts,
     const double eps = std::numeric_limits<double>::epsilon();
     for (size_t i = 0; i < n; ++i) {
         double f = fitted[i];
-        if (f <= 0.0) f = eps;
+        if (!std::isfinite(f) || f <= 0.0) f = eps;
         result.lowess_ratio[i] = counts[i] / f;
         result.gc_corrected[i] = counts[i] * (median / f);
     }

@@ -48,6 +48,12 @@ CellSegmentation segment_cell(const std::vector<BinGc>& bins,
             S.x.push_back(lowess_ratio[idx]);
         }
 
+        // std::hash<std::string> is implementation-defined (its values may
+        // differ across compilers/standard-library versions/platforms), so
+        // this seed -- and therefore the exact permutation draws below -- is
+        // reproducible only within a single build/toolchain, not bit-for-bit
+        // across machines. Segmentation is a statistical permutation test, so
+        // cross-platform results are statistically equivalent, not identical.
         uint64_t chrom_seed = cbs_args.seed ^ hasher(barcode) ^ hasher(chrom);
         std::mt19937_64 rng(chrom_seed);
 
