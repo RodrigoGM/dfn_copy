@@ -95,11 +95,18 @@ $(BUILD_DIR)/scratch_matrix.o: src/scratch_matrix.cpp src/scratch_matrix.hpp | $
 $(TEST_BUILD)/test_scratch_matrix: tests/test_scratch_matrix.cpp $(BUILD_DIR)/scratch_matrix.o | $(TEST_BUILD)
 	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isrc $^ -o $@ -pthread
 
+$(BUILD_DIR)/transpose_writer.o: src/transpose_writer.cpp src/transpose_writer.hpp | $(BUILD_DIR)
+	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isrc -c $< -o $@
+
+$(TEST_BUILD)/test_transpose_writer: tests/test_transpose_writer.cpp $(BUILD_DIR)/transpose_writer.o | $(TEST_BUILD)
+	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isrc $^ -o $@ -lz
+
 $(CBS_BIN): $(BUILD_DIR)/cbs_main.o $(BUILD_DIR)/cbs_args.o $(BUILD_DIR)/bin_gc.o \
             $(BUILD_DIR)/raw_counts_loader.o $(BUILD_DIR)/cell_filter.o \
             $(BUILD_DIR)/lowess.o $(BUILD_DIR)/gc_correct.o \
             $(BUILD_DIR)/vendor_stats.o $(BUILD_DIR)/vendor_correction.o $(BUILD_DIR)/vendor_cbs.o \
-            $(BUILD_DIR)/segment_cell.o $(BUILD_DIR)/scratch_matrix.o $(BUILD_DIR)/seg_file_writer.o
+            $(BUILD_DIR)/segment_cell.o $(BUILD_DIR)/scratch_matrix.o $(BUILD_DIR)/seg_file_writer.o \
+            $(BUILD_DIR)/transpose_writer.o
 	$(CXX) $^ -o $@ -lz -pthread
 
 $(TEST_BUILD)/test_cli_args: tests/test_cli_args.cpp $(BUILD_DIR)/cli_args.o | $(TEST_BUILD)
@@ -114,7 +121,7 @@ $(TEST_BUILD)/test_bins: tests/test_bins.cpp $(BUILD_DIR)/bins.o $(BUILD_DIR)/cl
 $(TEST_BUILD)/test_vendor_cbs: tests/test_vendor_cbs.cpp $(BUILD_DIR)/vendor_stats.o $(BUILD_DIR)/vendor_correction.o $(BUILD_DIR)/vendor_cbs.o | $(TEST_BUILD)
 	$(CXX) -std=c++17 -Wall -Wextra -O2 -Isrc/vendor/cbs $^ -o $@
 
-TESTS := $(TEST_BUILD)/test_cbs_args $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index $(TEST_BUILD)/test_counts_matrix $(TEST_BUILD)/test_read_filter $(TEST_BUILD)/test_fragment_pairing $(TEST_BUILD)/test_discordant_writer $(TEST_BUILD)/test_bin_gc $(TEST_BUILD)/test_raw_counts_loader $(TEST_BUILD)/test_cell_filter $(TEST_BUILD)/test_lowess $(TEST_BUILD)/test_gc_correct $(TEST_BUILD)/test_vendor_cbs $(TEST_BUILD)/test_segment_cell $(TEST_BUILD)/test_scratch_matrix $(TEST_BUILD)/test_seg_file_writer
+TESTS := $(TEST_BUILD)/test_cbs_args $(TEST_BUILD)/test_cli_args $(TEST_BUILD)/test_bins $(TEST_BUILD)/test_barcode_index $(TEST_BUILD)/test_counts_matrix $(TEST_BUILD)/test_read_filter $(TEST_BUILD)/test_fragment_pairing $(TEST_BUILD)/test_discordant_writer $(TEST_BUILD)/test_bin_gc $(TEST_BUILD)/test_raw_counts_loader $(TEST_BUILD)/test_cell_filter $(TEST_BUILD)/test_lowess $(TEST_BUILD)/test_gc_correct $(TEST_BUILD)/test_vendor_cbs $(TEST_BUILD)/test_segment_cell $(TEST_BUILD)/test_scratch_matrix $(TEST_BUILD)/test_seg_file_writer $(TEST_BUILD)/test_transpose_writer
 
 .PHONY: test
 test: $(TESTS)
