@@ -4,105 +4,74 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-This repository is currently empty — no source, build files, or docs exist yet.
-This CLAUDE.md is the **design/spec contract** for the first implementation,
-derived from the tool spec that was provided when this repo was initialized.
-It intentionally does not describe a build/lint/test workflow, because none
-exists yet — update this file once real commands exist, don't let it drift
-into aspirational claims about a working build.
+This repo ships two working C++17 binaries, `dfn_copy` and `dfn_cbs`, built from one root `Makefile`, currently at version 0.2.0 (see `VERSION`/`changelog.txt`). Both binaries, their full design rationale, and their test suites already exist — this file documents what's actually there, not a target design. Update it whenever the CLI contract, module list, or architecture changes; don't let it drift back into aspirational claims.
 
-## What the tool is
+## Build
 
-A single-purpose C++17 CLI tool that turns a **DEFND-seq** gDNA BAM into a
-bin × cell copy-number count matrix.
+```bash
+make            # builds both ./dfn_copy and ./dfn_cbs
+make clean      # removes build/, tests/build/, and both binaries
+```
 
-DEFND-seq (Olsen et al.) co-sequences RNA and DNA from single nuclei using the
-10x Genomics Chromium Single Cell Multiome ATAC + Gene Expression kit
-"as-is," producing a gDNA library alongside the cDNA library. The gDNA BAM is
-therefore a standard 10x-barcoded, coordinate-sorted BAM — the per-nucleus
-cell barcode lives in a BAM tag (`CB` by default, the Cell Ranger corrected
-barcode, e.g. `CB:Z:AACGTGATCCGTAAGT-1`), not in the read sequence.
+`dfn_copy` requires htslib (`brew install htslib` / `apt install libhtslib-dev`); `dfn_cbs` has **no** htslib dependency by design (it never touches a BAM) — its Makefile rules deliberately use explicit compile flags instead of the shared `$(CXXFLAGS)`/`$(LDLIBS)`, which carry htslib's pkg-config output, so `dfn_cbs` alone is buildable without htslib installed at all. Preserve that separation when adding rules for either binary.
 
-The tool does one thing: stream the sorted BAM once, assign each passing read
-to a user-supplied genomic bin, and emit two gzipped bin × cell matrices (raw
-counts and GC-corrected counts). It does not compute bins itself, and it is
-not ATAC-fragment-aware — this is plain per-read binning over gDNA alignments.
+## Testing
 
-## CLI contract
+```bash
+make test                                     # C++ unit tests, one binary per module
+.venv/bin/pytest tests/integration -v         # end-to-end integration tests (both binaries)
+.venv/bin/pytest tests_py -v                  # correct_gc.py tests
+```
 
-This is the interface any implementation must match; do not add flags beyond
-this list or change these defaults without updating this section.
+Fresh-clone bootstrap for the Python side:
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `--bam` | required | Coordinate-sorted, indexed DEFND-seq gDNA BAM |
-| `--bins` | required | Tab-separated bin file; header-driven columns `chrom`, `start`, `end`, `gc` |
-| `--out-prefix` | required | Prefix for the two output `.txt.gz` files |
-| `--barcode-tag` | `CB` | BAM tag holding the cell barcode (e.g. switch to `CR` for raw) |
-| `--barcodes` | none | Optional barcode allowlist file; reads with barcodes not on it are skipped |
-| `--mapq` | sane default (document exact value where implemented) | Minimum MAPQ to keep a read |
-| `--exclude-dups` | on | Toggle exclusion of PCR/optical duplicate reads (SAM dup flag) |
-| `--position` | `end` | Which read coordinate bins on: `start`, `midpoint`, or `end` |
-| `--threads` | `1` | Worker thread count |
-| `--help` | — | Print usage |
+Unit tests use a hand-rolled framework (`tests/test_framework.hpp`: `ASSERT_TRUE`/`ASSERT_EQ`/`ASSERT_NEAR`/`TEST_REPORT()`); BAM-specific test helpers live separately in `tests/bam_test_helpers.hpp` so `dfn_cbs`'s tests never need htslib. Integration fixtures for `dfn_copy` are pysam-generated BAMs (`tests/fixtures/`); `dfn_cbs`'s fixtures are plain gzip/text (`tests/fixtures/gen_cbs_fixture.py`), since its input is already a matrix.
 
-Reads are always dropped if: unmapped, secondary, supplementary, QC-fail, or
-(when `--exclude-dups` is on) marked duplicate — these are not configurable
-beyond the MAPQ threshold and the dup toggle. Reads without a `--barcode-tag`
-tag, or excluded by the `--barcodes` allowlist, are also dropped.
+## Architecture
 
-## Core algorithm (single streaming pass)
+### `dfn_copy` — BAM → bin × cell counts matrix
 
-- One pass over the coordinate-sorted BAM. For each read passing filters,
-  compute its bin coordinate from `--position` (start/midpoint/end) and look
-  up the containing bin by chromosome; reads outside all provided bins are
-  dropped.
-- Increment a counter for `(bin, cell_barcode)`.
-- Bin identifiers in output are `<chr>:<start>:<end>` (colon-separated).
-- Accumulate into a bins × barcodes counts structure sized from the bin file
-  and the observed/allowlisted barcode set.
+One streaming pass over a coordinate-sorted, indexed DEFND-seq gDNA BAM: filters reads, resolves paired fragments to one representative alignment, bins them, and emits a raw bin × cell counts matrix plus a diverted BAM of structural-variant evidence.
 
-## Design decisions the implementation must make explicit
+Modules (`src/`): `cli_args`, `bins` (bin-file parsing + coordinate lookup + chrom-naming validation), `barcode_index`, `counts_matrix` (dense growable matrix, gzip TSV writer), `read_filter`, `fragment_pairing` (QNAME-keyed lookback buffer, `auto`/`r1`/`r2` modes), `discordant_writer` (RAII BAM writer for split/discordant reads), `main.cpp` (orchestration).
 
-These are called out in the spec as choices to be made and *stated*, not
-defaults to be picked silently:
+CLI: `--bam`, `--bins`, `--out-prefix` (required); `--barcode-tag` (`CB`); `--barcodes`; `--mapq` (`30`); `--exclude-dups` (`true`); `--primary-alignment-only` (`true`); `--single-end-counting` (`auto`|`r1`|`r2`); `--max-insert-size` (`0`, disabled); `--position` (`start`|`midpoint`|`end`, default `end`); `--threads` (`1`, htslib BGZF decompression only); `--help`.
 
-- **Matrix storage: dense vs. sparse.** A dense matrix is fine at the scale
-  of tens of thousands of bins × thousands of cells, but note the memory
-  footprint in the implementation notes; move to a sparse accumulator if the
-  barcode set gets large, and say so explicitly rather than assuming.
-- **Barcode column ordering.** Pick exactly one of: allowlist order,
-  first-seen order, or sorted order — and document which one was chosen and
-  why, since it determines output column order.
-- **Chromosome-naming consistency.** BAM header contig names and bin-file
-  chrom names must be checked for a consistent convention (`chr1` vs `1`) up
-  front. A mismatch must be a clear, loud error — never a silent drop of
-  every read.
-- **GC correction method and scope.** Use a standard, documented approach
-  (LOESS/lowess of counts vs. bin GC, correcting each bin to the
-  genome-wide median — the QDNAseq/Ginkgo-style approach). State explicitly
-  whether correction is per-cell (the single-cell CNV norm, but more
-  compute) or pooled across cells, and the tradeoff either way. If in-C++
-  LOESS adds too much complexity, the accepted alternative is emitting raw
-  counts plus the bin's GC column and doing correction in a small companion
-  R/Python script — state which path was taken and why.
+Outputs: `<prefix>.raw_counts.txt.gz` (bins × cells, gzip TSV), `<prefix>.discordant.bam` (+`.bai`) for split/chimeric reads and discordant pairs.
 
-## Outputs
+Full design rationale: `docs/superpowers/specs/2026-07-21-defnd-seq-binning-design.md`.
 
-Two tab-separated, gzip-compressed `.txt.gz` files, both shaped bins (rows) ×
-cells (columns), bin rows named `<chr>:<start>:<end>`, cell barcodes as
-column headers:
+### `dfn_cbs` — GC correction + CBS segmentation at scale
 
-1. `<out-prefix>...` raw integer bin counts per cell.
-2. `<out-prefix>...` GC-corrected bin counts per cell.
+Reads a `dfn_copy` raw-counts matrix, GC-corrects it per cell (LOWESS reimplemented in C++, matching `correct_gc.py`'s method/statsmodels defaults), and segments each cell's corrected profile via an **in-process vendored copy** of the user's separate `cbs+` project (circular binary segmentation, source at `~/mskcc/dev/cbs+/`) — copied under `src/vendor/cbs/`, never subprocess-called, `cbs+` itself never modified. Built because `correct_gc.py` OOM'd on a real 6,866-bin × 475,674-cell matrix; `dfn_cbs`'s whole point is a bounded memory model at that scale.
+
+Three-phase, bounded-memory architecture: **Phase 1** loads the raw-counts matrix once (freed after Phase 2). **Phase 2** processes surviving cells in parallel (one worker per cell), GC-correcting and segmenting each, writing results into three cell-major scratch files via lock-free positioned I/O (`pwrite`/`pread`, disjoint byte ranges per cell — no locking needed) plus appending `.seg` rows. **Phase 3** transposes each scratch file to the final `bins × cells` gzip TSV convention, one file in memory at a time — never two full matrices resident simultaneously. Peak RSS stays near one matrix's size (~13–15GB at the motivating scale) regardless of cell count; scratch disk space needed is roughly 3× one output matrix's size, held for the duration of the run.
+
+CBS segmentation always runs with **centering forced off** (not exposed as a flag) — normal CBS per-chromosome centering would erase real whole-chromosome copy-number differences, exactly the signal GC correction is meant to preserve. Per-cell/per-chromosome RNG seed is `--seed XOR hash(barcode) XOR hash(chrom)`, so results are independent of worker thread scheduling.
+
+Modules (`src/`): `cbs_args`, `bin_gc` (bin/GC loader, distinct from `dfn_copy`'s `bins.hpp` — no coordinate-lookup machinery needed), `raw_counts_loader`, `cell_filter`, `lowess`, `gc_correct`, `segment_cell` (chromosome grouping + vendored-CBS call + coordinate mapping), `scratch_matrix` (positioned-I/O cell-major scratch files), `seg_file_writer`, `transpose_writer`, `progress_reporter` (stderr status line with ETA, TTY-aware), `cbs_main.cpp` (orchestration), `vendor/cbs/` (vendored CBS core — see below).
+
+CLI: `--counts`, `--bins`, `--out-prefix` (required); `--min-reads` (`100000` — cells below this raw-count sum are dropped entirely from every output); `--threads` (`1`, cell-level parallelism — different meaning from `dfn_copy`'s `--threads`); `--alpha` (`0.01`); `--perms` (`1000`); `--min-seg-len` (`25`); `--max-depth` (`100`); `--cbs-method` (`1cp`|`2cp`); `--seed` (`1`); `--quiet`; `--help`.
+
+Outputs: `<prefix>.gc_corrected.txt.gz`, `<prefix>.lowess_ratio.txt.gz`, `<prefix>.segmented_lowess_ratio.txt.gz` (all bins × cells gzip TSV), `<prefix>.seg` (plain text, IGV/DNAcopy format — not gzipped).
+
+Full design rationale: `docs/superpowers/specs/2026-07-22-dfn_cbs-gc-correction-segmentation-design.md`.
+
+### `correct_gc.py`
+
+Python GC-correction fallback, kept for users with small matrices who don't want to build the C++ tool chain. `dfn_cbs` supersedes it at production scale but does not replace it.
+
+## Vendored code
+
+`src/vendor/cbs/` is a deliberate **verbatim copy** (not a submodule or symlink) of `~/mskcc/dev/cbs+/`'s segmentation core, with exactly one intentional change (`cbs.hpp`'s include of a trimmed local `io_types.hpp` instead of `cbs+`'s real `io.hpp`, which pulls in unrelated CLI/file-parsing declarations `dfn_cbs` doesn't need). See `src/vendor/cbs/README.md` for the full provenance note. Never "clean up" this code's style to match the rest of the repo, and never strip its unused paths (e.g. `correction.cpp`'s rolling/linear correction, never exercised since `dfn_cbs` always leaves `Args::correction = "none"`) — fidelity to the tested upstream source is the point. If `cbs+` changes upstream, this copy needs updating by hand.
 
 ## Constraints / non-goals
 
-- No config files, no plugin system, no output formats beyond the two
-  specified gzipped TSVs.
-- Barcode handling only ever reads the BAM tag (`--barcode-tag`) — never
-  parse barcodes out of read sequence.
-- The tool assigns reads to bins the user supplies; it does not compute or
-  merge bins itself.
-- Validate inputs up front (BAM index present, bin file well-formed,
-  chromosome-naming consistency) rather than failing silently mid-stream.
+- `dfn_copy` assigns reads to bins the user supplies; it does not compute or merge bins itself, and is not ATAC-fragment-aware (no Tn5 cut-site offset correction).
+- Barcode handling only ever reads the BAM tag (`--barcode-tag`) — never parsed out of read sequence.
+- `dfn_cbs` never opens a BAM and has no htslib dependency, enforced at the build level.
+- No config files, no plugin system, no output formats beyond what's documented above for each binary.
+- Validate inputs up front (BAM index present, bin file well-formed, chromosome-naming consistency, `--counts`/`--bins` matching pair) rather than failing silently mid-stream — every fallible operation throws a specific `std::runtime_error`, never crashes or returns a sentinel.
