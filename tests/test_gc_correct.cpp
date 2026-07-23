@@ -49,9 +49,22 @@ void test_mismatched_sizes_throws() {
     ASSERT_TRUE(threw);
 }
 
+void test_empty_input_throws() {
+    std::vector<double> gc;
+    std::vector<double> counts;
+    bool threw = false;
+    try {
+        gc_correct_cell(counts, gc);
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+}
+
 int main() {
     test_ratio_has_mean_near_one_and_corrected_median_matches_raw();
     test_zero_median_falls_back_to_raw_counts();
     test_mismatched_sizes_throws();
+    test_empty_input_throws();
     TEST_REPORT();
 }

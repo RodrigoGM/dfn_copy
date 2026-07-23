@@ -9,6 +9,9 @@ GcCorrectedCell gc_correct_cell(const std::vector<double>& counts,
     if (counts.size() != gc.size()) {
         throw std::runtime_error("gc_correct_cell: counts and gc must be the same size");
     }
+    if (counts.empty()) {
+        throw std::runtime_error("gc_correct_cell: counts and gc must be non-empty");
+    }
     size_t n = counts.size();
     GcCorrectedCell result;
     result.gc_corrected.resize(n);
