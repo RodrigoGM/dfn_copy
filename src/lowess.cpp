@@ -20,10 +20,6 @@ std::vector<double> weighted_fit_pass(const std::vector<double>& x,
     size_t n = x.size();
     std::vector<double> fitted(n, 0.0);
 
-    // inv_order[order[t]] = t : original index -> position in sorted order.
-    std::vector<size_t> inv_order(n);
-    for (size_t t = 0; t < n; ++t) inv_order[order[t]] = t;
-
     for (size_t t = 0; t < n; ++t) {
         size_t orig_i = order[t];
         double xi = xs[t];
@@ -92,7 +88,6 @@ std::vector<double> weighted_fit_pass(const std::vector<double>& x,
             a = (Sy - b * S1) / S0;
         }
         fitted[orig_i] = a + b * xi;
-        (void)inv_order; // computed for clarity/future use; not otherwise read
     }
 
     return fitted;
@@ -121,6 +116,9 @@ std::vector<double> lowess(const std::vector<double>& y,
     if (n == 0) {
         throw std::runtime_error("lowess: x/y must be non-empty");
     }
+    if (frac <= 0.0 || frac > 1.0) {
+        throw std::runtime_error("lowess: frac must be in (0, 1]");
+    }
 
     std::vector<size_t> order(n);
     std::iota(order.begin(), order.end(), 0);
@@ -130,7 +128,11 @@ std::vector<double> lowess(const std::vector<double>& y,
     std::vector<double> xs(n);
     for (size_t t = 0; t < n; ++t) xs[t] = x[order[t]];
 
-    size_t k = static_cast<size_t>(std::ceil(frac * static_cast<double>(n)));
+    // statsmodels' actual default (_smoothers_lowess.pyx) truncates rather
+    // than rounds up: k = int(frac * n + 1e-10). The epsilon guards against
+    // float rounding landing just below an integer (e.g. frac*n == 53.0
+    // computed as 52.999999999996).
+    size_t k = static_cast<size_t>(frac * static_cast<double>(n) + 1e-9);
     if (k < 2) k = 2;
     if (k > n) k = n;
 
