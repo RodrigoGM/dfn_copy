@@ -31,12 +31,20 @@ void write_transposed_gz(const std::string& path,
         throw std::runtime_error("cannot open output file for writing: " + path);
     }
 
+    auto checked_write = [&](const std::string& chunk, const std::string& what) {
+        int written = gzwrite(out, chunk.data(), static_cast<unsigned>(chunk.size()));
+        if (written <= 0 || static_cast<size_t>(written) != chunk.size()) {
+            gzclose(out);
+            throw std::runtime_error("transpose writer: failed writing " + what +
+                                      " to " + path);
+        }
+    };
+
     std::ostringstream header;
     header << "bin";
     for (const auto& name : barcode_names) header << '\t' << name;
     header << '\n';
-    std::string header_str = header.str();
-    gzwrite(out, header_str.data(), static_cast<unsigned>(header_str.size()));
+    checked_write(header.str(), "header");
 
     for (size_t bin = 0; bin < num_bins; ++bin) {
         std::ostringstream row;
@@ -45,9 +53,12 @@ void write_transposed_gz(const std::string& path,
             row << '\t' << scratch_data[cell * num_bins + bin];
         }
         row << '\n';
-        std::string row_str = row.str();
-        gzwrite(out, row_str.data(), static_cast<unsigned>(row_str.size()));
+        checked_write(row.str(), "bin row " + bin_names[bin]);
     }
 
-    gzclose(out);
+    int close_ret = gzclose(out);
+    if (close_ret != Z_OK) {
+        throw std::runtime_error("transpose writer: gzclose failed (code " +
+                                  std::to_string(close_ret) + ") for " + path);
+    }
 }

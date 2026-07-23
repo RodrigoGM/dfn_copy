@@ -6,7 +6,8 @@
 // ScratchMatrix::read_all() -- row-major by cell,
 // scratch_data[cell * num_bins + bin]) out as a bins x cells gzip TSV,
 // the same convention dfn_copy's raw_counts.txt.gz uses. Throws
-// std::runtime_error on any size mismatch or an unwritable path.
+// std::runtime_error on any size mismatch, an unwritable path, a failed/short
+// gzwrite (e.g. disk full mid-write), or a non-OK gzclose.
 void write_transposed_gz(const std::string& path,
                           const std::vector<float>& scratch_data,
                           size_t num_cells,
