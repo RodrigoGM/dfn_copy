@@ -61,7 +61,10 @@ of `cbs+`'s circular binary segmentation core.
 ```
 
 Cells with fewer than 100,000 total raw binned reads are dropped by
-default (`--min-reads` to change it). Outputs:
+default (`--min-reads` to change it). Note: `dfn_cbs` also needs free disk
+space for temporary scratch files -- roughly 3x the size of one output
+matrix, held for the duration of the run, on top of the final output
+files. Outputs:
 
 - `sample.gc_corrected.txt.gz` -- same as `correct_gc.py`'s output.
 - `sample.lowess_ratio.txt.gz` -- the dimensionless GC-correction ratio
