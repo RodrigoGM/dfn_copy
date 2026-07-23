@@ -1,6 +1,6 @@
 # dfn_copy
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)
 
 Turns a coordinate-sorted, indexed DEFND-seq gDNA BAM into a bin×cell
 fragment-count matrix for single-cell copy-number analysis, plus a

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning (https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-23
+
+### Added
+- `dfn_cbs`: a new C++17 binary that GC-corrects and segments large single-cell copy-number matrices without the memory blowup that crashed `correct_gc.py` on production-scale data.
+- Three-phase bounded-memory design (load once, parallel per-cell correct+segment, transpose-on-exit) keeping peak memory near a single matrix's size regardless of cell count.
+- Per-cell LOWESS GC correction reimplemented in C++, matching `correct_gc.py`'s statistical method.
+- Circular binary segmentation via an in-process vendored copy of `cbs+`, with centering forced off to preserve whole-chromosome copy-number signal.
+- Four outputs per run: GC-corrected counts, GC-correction ratio, segmented ratio, and an IGV/DNAcopy-format `.seg` file.
+- Live progress reporting with elapsed time, ETA, and throughput for long-running per-cell processing.
+
+### Fixed
+- `dfn_copy`'s raw-counts matrix writer now checks gzip write/close return values instead of silently truncating output on disk-full or I/O errors.
+
 ## [0.1.0] - 2026-07-22
 
 ### Added
