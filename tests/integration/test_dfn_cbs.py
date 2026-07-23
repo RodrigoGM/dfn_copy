@@ -109,3 +109,34 @@ def test_unwritable_out_prefix_dir_fails_cleanly(tmp_path):
     assert result.returncode == 1
     assert "libc++abi" not in result.stderr
     assert "terminating due to uncaught exception" not in result.stderr
+
+
+def test_worker_exception_leaves_no_seg_or_scratch_files_behind(tmp_path):
+    # A zero-bin bins.tsv (header row only) is a legitimately well-formed
+    # input -- load_bin_gc and load_raw_counts both accept it -- but it
+    # drives gc_correct_cell's "counts and gc must be non-empty" guard
+    # inside the Phase 2 worker loop for every surviving cell, which is a
+    # genuine worker-thread exception rather than a Phase-1 validation
+    # error. With --min-reads 0, a cell with a trivial column-sum of 0
+    # still survives cell_filter and reaches the worker loop.
+    bins_path = str(tmp_path / "bins.tsv")
+    counts_path = str(tmp_path / "counts.raw_counts.txt.gz")
+    with open(bins_path, "w") as f:
+        f.write("chrom\tstart\tend\tgc\n")
+    with gzip.open(counts_path, "wt") as f:
+        f.write("bin\tX-1\n")
+
+    out_prefix = str(tmp_path / "out")
+    result = subprocess.run(
+        [DFN_CBS, "--counts", counts_path, "--bins", bins_path,
+         "--out-prefix", out_prefix, "--min-reads", "0"],
+        capture_output=True, text=True)
+
+    assert result.returncode == 1
+    assert "counts and gc must be non-empty" in result.stderr
+
+    for suffix in [".seg", ".gc_corrected.scratch.bin",
+                   ".lowess_ratio.scratch.bin",
+                   ".segmented_lowess_ratio.scratch.bin"]:
+        assert not os.path.exists(out_prefix + suffix), \
+            f"{out_prefix + suffix} should have been cleaned up on error"

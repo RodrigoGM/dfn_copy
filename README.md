@@ -54,7 +54,7 @@ of memory on very large matrices (hundreds of thousands of cells). For
 that scale, use `dfn_cbs` instead -- a C++ tool that does the same
 per-cell LOWESS GC correction with a bounded memory model, and
 additionally segments each cell's corrected profile via a vendored copy
-of [cbs+](https://github.com)'s circular binary segmentation core.
+of `cbs+`'s circular binary segmentation core.
 
 ```bash
 ./dfn_cbs --counts sample.raw_counts.txt.gz --bins bins.tsv --out-prefix sample

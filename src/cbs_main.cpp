@@ -134,7 +134,26 @@ int run(const CbsArgs& args) {
     for (auto& w : workers) w.join();
     reporter.stop();
 
-    if (first_error) std::rethrow_exception(first_error);
+    std::string seg_path = args.out_prefix + ".seg";
+
+    // Best-effort cleanup for any error path below this point: a failed
+    // run must never leave a scratch temp file or a partial file sitting
+    // under its final output name for a caller to mistake for a complete
+    // result. Unconditionally attempts to remove all four known paths --
+    // whichever of them exist at the point of failure -- and ignores
+    // std::remove's return value: a nonexistent path is a harmless no-op,
+    // and the exception already in flight is the error that matters.
+    auto cleanup_error_artifacts = [&]() {
+        std::remove(seg_path.c_str());
+        std::remove(gc_scratch_path.c_str());
+        std::remove(ratio_scratch_path.c_str());
+        std::remove(seg_scratch_path.c_str());
+    };
+
+    if (first_error) {
+        cleanup_error_artifacts();
+        std::rethrow_exception(first_error);
+    }
 
     seg_writer->close();
 
@@ -142,23 +161,28 @@ int run(const CbsArgs& args) {
     matrix.data.clear();
     matrix.data.shrink_to_fit();
 
-    write_one_matrix(*gc_scratch, args.out_prefix + ".gc_corrected.txt.gz",
-                      "gc_corrected.txt.gz", bin_names, surviving_barcodes, args.quiet);
-    gc_scratch->close();
-    std::remove(gc_scratch_path.c_str());
-    gc_scratch.reset();
+    try {
+        write_one_matrix(*gc_scratch, args.out_prefix + ".gc_corrected.txt.gz",
+                          "gc_corrected.txt.gz", bin_names, surviving_barcodes, args.quiet);
+        gc_scratch->close();
+        std::remove(gc_scratch_path.c_str());
+        gc_scratch.reset();
 
-    write_one_matrix(*ratio_scratch, args.out_prefix + ".lowess_ratio.txt.gz",
-                      "lowess_ratio.txt.gz", bin_names, surviving_barcodes, args.quiet);
-    ratio_scratch->close();
-    std::remove(ratio_scratch_path.c_str());
-    ratio_scratch.reset();
+        write_one_matrix(*ratio_scratch, args.out_prefix + ".lowess_ratio.txt.gz",
+                          "lowess_ratio.txt.gz", bin_names, surviving_barcodes, args.quiet);
+        ratio_scratch->close();
+        std::remove(ratio_scratch_path.c_str());
+        ratio_scratch.reset();
 
-    write_one_matrix(*seg_scratch, args.out_prefix + ".segmented_lowess_ratio.txt.gz",
-                      "segmented_lowess_ratio.txt.gz", bin_names, surviving_barcodes, args.quiet);
-    seg_scratch->close();
-    std::remove(seg_scratch_path.c_str());
-    seg_scratch.reset();
+        write_one_matrix(*seg_scratch, args.out_prefix + ".segmented_lowess_ratio.txt.gz",
+                          "segmented_lowess_ratio.txt.gz", bin_names, surviving_barcodes, args.quiet);
+        seg_scratch->close();
+        std::remove(seg_scratch_path.c_str());
+        seg_scratch.reset();
+    } catch (...) {
+        cleanup_error_artifacts();
+        throw;
+    }
 
     return 0;
 }
