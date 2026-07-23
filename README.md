@@ -47,6 +47,36 @@ column order) `chrom`, `start`, `end`, `gc`.
 
 See `./dfn_copy --help` for the full flag list and defaults.
 
+## dfn_cbs: GC correction + segmentation at scale
+
+`correct_gc.py` GC-corrects a raw counts matrix in Python, but can run out
+of memory on very large matrices (hundreds of thousands of cells). For
+that scale, use `dfn_cbs` instead -- a C++ tool that does the same
+per-cell LOWESS GC correction with a bounded memory model, and
+additionally segments each cell's corrected profile via a vendored copy
+of [cbs+](https://github.com)'s circular binary segmentation core.
+
+```bash
+./dfn_cbs --counts sample.raw_counts.txt.gz --bins bins.tsv --out-prefix sample
+```
+
+Cells with fewer than 100,000 total raw binned reads are dropped by
+default (`--min-reads` to change it). Outputs:
+
+- `sample.gc_corrected.txt.gz` -- same as `correct_gc.py`'s output.
+- `sample.lowess_ratio.txt.gz` -- the dimensionless GC-correction ratio
+  (mean approx. 1 per cell); this is what gets segmented.
+- `sample.segmented_lowess_ratio.txt.gz` -- same shape, each bin replaced
+  by its segment's mean.
+- `sample.seg` -- IGV/DNAcopy-format segments file (plain text, not
+  gzipped).
+
+See `./dfn_cbs --help` for the full flag list (including CBS tuning
+parameters `--alpha`, `--perms`, `--min-seg-len`, `--max-depth`,
+`--cbs-method`) and
+`docs/superpowers/specs/2026-07-22-dfn_cbs-gc-correction-segmentation-design.md`
+for the full design rationale.
+
 ## Validation
 
 After a run, sanity-check the output before trusting it:

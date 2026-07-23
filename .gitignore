@@ -3,6 +3,7 @@ build/
 tests/build/
 *.o
 dfn_copy
+dfn_cbs
 __pycache__/
 *.pyc
 tests/fixtures/*.bam
